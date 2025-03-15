@@ -10,7 +10,7 @@ The b-tree will be stored in pages of length 4096. Each page will be either a
 
 use std::{cmp::min, env::set_current_dir, fmt::{Arguments, Debug}, fs, io::{BufRead, Write}, ops::{Bound, Deref, Range, RangeBounds}, str};
 
-use hexdump::{AsHexDumper, DoHexdump, HexdumpIoWriter, HexdumpOptions, MyByteReader, WriteHexdump};
+use hexdump::{hexdump_into_rr, HexdumpIoWriter, HexdumpOptions, MyByteReader, SliceGroupedReader, WriteHexdump};
 
 mod hexdump;
 
@@ -20,5 +20,15 @@ fn main() {
     f.extend_from_slice(&[52u8; 96]);
     f.extend_from_slice(&[0u8; 4092]);
     f.extend_from_slice(&[27u8; 27]);
-    f.as_slice().into_iter().hexdumppp(&mut HexdumpIoWriter(std::io::stdout()));
+
+    let mut sg = SliceGroupedReader::new(&f);
+    let mut writer = HexdumpIoWriter(std::io::stdout());
+    hexdump_into_rr(
+        &mut writer, 
+        &mut sg, HexdumpOptions {
+            omit_equal_rows: true,
+            // group_size: hexdump::GroupSize::Int,
+            group_spacing: hexdump::Spacing::Wide,
+            ..Default::default()
+        }).unwrap();
 }
