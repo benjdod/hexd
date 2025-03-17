@@ -1,4 +1,4 @@
-use std::{convert::Infallible, fmt::{Arguments, Debug}, io::BufRead, ops::{BitAnd, Bound, Range, RangeBounds, RangeFull, Shr}};
+use std::{any::Any, convert::Infallible, fmt::{Arguments, Debug}, io::BufRead, ops::{BitAnd, Bound, Range, RangeBounds, RangeFull, Shr}, ptr::addr_eq};
 
 pub struct HexdumpIoWriter<W>(pub W) where W: std::io::Write;
 pub struct HexdumpFmtWriter<W>(pub W) where W: std::fmt::Write;
@@ -30,8 +30,8 @@ impl<W> WriteHexdump for HexdumpFmtWriter<W> where W: std::fmt::Write {
 }
 
 pub struct HexdumpRange {
-    skip: usize,
-    limit: Option<usize>
+    pub skip: usize,
+    pub limit: Option<usize>
 }
 
 pub struct HexdumpOptions {
@@ -39,10 +39,11 @@ pub struct HexdumpOptions {
     pub uppercase: bool,
     pub print_ascii: bool,
     pub align: bool,
-    pub group_size: GroupSize,
-    pub byte_spacing: Spacing,
-    pub num_groups: usize,
-    pub group_spacing: Spacing,
+    pub grouping: Grouping,
+    // pub group_size: GroupSize,
+    // pub byte_spacing: Spacing,
+    // pub num_groups: usize,
+    // pub group_spacing: Spacing,
     pub print_range: HexdumpRange
 }
 
@@ -52,7 +53,21 @@ pub enum IndexOffset {
     Absolute(usize)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Grouping {
+    Ungrouped {
+        byte_count: usize,
+        spacing: Spacing
+    },
+    Grouped {
+        group_size: GroupSize,
+        num_groups: usize,
+        byte_spacing: Spacing,
+        group_spacing: Spacing
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GroupSize {
     Byte,
     Short,
@@ -73,7 +88,7 @@ impl GroupSize {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Spacing {
     None,
     Normal,
@@ -114,10 +129,11 @@ impl Default for HexdumpOptions {
             uppercase: true,
             print_ascii: true,
             align: true,
-            group_size: GroupSize::Byte,
-            byte_spacing: Spacing::Normal,
-            num_groups: 16,
-            group_spacing: Spacing::Normal,
+            grouping: Grouping::Grouped { group_size: GroupSize::Int, num_groups: 4, byte_spacing: Spacing::None, group_spacing: Spacing::Normal },
+            // group_size: GroupSize::Byte,
+            // byte_spacing: Spacing::Normal,
+            // num_groups: 16,
+            // group_spacing: Spacing::Normal,
             print_range: HexdumpRange { skip: 0, limit: None }
         }
     }
@@ -125,25 +141,42 @@ impl Default for HexdumpOptions {
 
 impl HexdumpOptions {
     fn row_width(&self) -> usize {
-        let m = self.group_size.element_count();
-        let single_group_width = (2 * m) + (self.byte_spacing.visual_width() * (m - 1));
-        let gg = (single_group_width * self.num_groups) + (self.group_spacing.visual_width() * (self.num_groups - 1));
-        gg
+        match self.grouping {
+            Grouping::Ungrouped { byte_count, spacing } => {
+                (byte_count * 2) + (spacing.visual_width() * (byte_count - 1))
+            }
+            Grouping::Grouped { group_size, num_groups, byte_spacing, group_spacing } => {
+                let m = group_size.element_count();
+                let single_group_width = (2 * m) + (byte_spacing.visual_width() * (m - 1));
+                let gg = (single_group_width * num_groups) + (group_spacing.visual_width() * (num_groups - 1));
+                gg
+            }
+        }
     }
 
     fn elt_width(&self) -> usize {
-        self.group_size.element_count() * self.num_groups
+        match self.grouping {
+            Grouping::Ungrouped { byte_count, spacing: _ } => byte_count,
+            Grouping::Grouped { group_size, num_groups, byte_spacing: _, group_spacing: _ } => {
+                group_size.element_count() * num_groups
+            }
+        }
     }
 
     fn spacing_for_element_index(&self, idx: usize) -> Spacing {
-        match self.group_size {
-            GroupSize::Byte => self.group_spacing,
-            gs => {
-                let s = gs.element_count();
-                if idx % s == s - 1 {
-                    self.group_spacing
-                } else {
-                    self.byte_spacing
+        match self.grouping {
+            Grouping::Ungrouped { byte_count: _, spacing } => spacing,
+            Grouping::Grouped { group_size, num_groups: _, byte_spacing, group_spacing } => {
+                match group_size {
+                    GroupSize::Byte => group_spacing,
+                    gs => {
+                        let s = gs.element_count();
+                        if idx % s == s - 1 {
+                            group_spacing
+                        } else {
+                            byte_spacing
+                        }
+                    }
                 }
             }
         }
@@ -191,14 +224,74 @@ fn number_to_hex<T: BitAnd<usize, Output = T> + Shr<T, Output = T> + Copy + TryI
     }
 }
 
+enum ElideSearch {
+    Byte([u8; 1]),
+    Short([u8; 2]),
+    Int([u8; 4]),
+    Long([u8; 8]),
+    ULong([u8; 16])
+}
+
+impl ElideSearch {
+    fn as_slice<'a>(&'a self) -> &'a [u8] {
+        match self {
+            Self::Byte(b) => b,
+            Self::Short(b) => b,
+            Self::Int(b) => b,
+            Self::Long(b) => b,
+            Self::ULong(b) => b
+        }
+    }
+
+    fn into_full_vec(&self, options: &HexdumpOptions) -> Vec<u8> {
+        let mut o: Vec<u8> = Vec::with_capacity(options.elt_width());
+        while o.len() < options.elt_width() {
+            o.extend_from_slice(self.as_slice());
+        }
+        o
+    }
+}
+
+enum RowBuf<'a> {
+    Full(&'a [u8]),
+    Left(&'a [u8]),
+    Right(&'a [u8])
+}
+
+impl<'a> RowBuf<'a> {
+    fn as_slice(&'a self) -> &'a [u8] {
+        match self {
+            &Self::Full(f) => f,
+            &Self::Left(f) => f,
+            &Self::Right(f) => f
+        }
+    }
+    fn len(&self) -> usize {
+        self.as_slice().len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.as_slice().len() == 0
+    }
+
+    fn is_full(&self) -> bool {
+        match self {
+            &Self::Full(_) => true,
+            _ => false
+        }
+    }
+}
+
+#[inline]
+fn truncate_byte_index(byte_index: usize, options: &HexdumpOptions) -> usize {
+    (byte_index / options.elt_width()) * options.elt_width()
+}
+
 pub fn hexdump_into_rr<
     W: WriteHexdump, 
-    Reader: GroupedReader<N>,
-    const N: usize
+    Reader: MyByteReader
 >(w: &mut W, reader: &mut Reader, options: HexdumpOptions) -> Result<(), W::Error> {
     let start = options.print_range.skip;
-
-    let mut elide: Option<(usize, u8)> = None;
 
     let aligned_index_into = |c: &RowBuf, i: usize| {
         match c {
@@ -271,135 +364,126 @@ pub fn hexdump_into_rr<
     let mut bytebuf: Vec<u8> = vec![0u8; options.elt_width()];
 
     let mut i = start;
-    let mut row_i = 0usize;
+    let mut row_index = 0usize;
 
-    let mut elide: Option<(usize, u8)> = None;
-
-    enum RowBuf<'a> {
-        Full(&'a [u8]),
-        Left(&'a [u8]),
-        Right(&'a [u8])
+    if start > 0 {
+        reader.skip_n(start);
     }
 
-    impl<'a> RowBuf<'a> {
-        fn as_slice(&'a self) -> &'a [u8] {
-            match self {
-                &Self::Full(f) => f,
-                &Self::Left(f) => f,
-                &Self::Right(f) => f
+    let mut elide_search: Option<(usize, ElideSearch)> = None;
+
+    let slice_equals_elision = |s: &RowBuf, search: &ElideSearch| {
+        s.is_full() && match search {
+            ElideSearch::Byte(c) => s.as_slice().iter().all(|b| *b == c[0]),
+            c => {
+                let c = c.as_slice();
+                for (i, b) in s.as_slice().iter().enumerate() {
+                    if c[i % c.len()] != *b { return false; }
+                }
+                true
             }
         }
-        fn len(&self) -> usize {
-            self.as_slice().len()
-        }
-
-        fn is_empty(&self) -> bool {
-            self.as_slice().len() == 0
-        }
-
-        fn is_full(&self) -> bool {
-            match self {
-                &Self::Full(_) => true,
-                _ => false
-            }
-        }
-
-        fn is_right(&self) -> bool {
-            match self {
-                &Self::Right(_) => true,
-                _ => false
-            }
-        }
-    }
-
-    // if start, advance reader by floored of offset
-    // where floored of offset is the next lowest aligned offset
-    // i.e. 7 -> 4, 9 -> 8, etc
-
-    let floored_start = (start / options.elt_width()) * options.elt_width();
-
-    if floored_start > 0 {
-        let adv = floored_start / reader.size();
-        for _ in 0..adv {
-            let _ = reader.read_next(Endianness::BigEndian);
-        }
-    }
-
-    let mut row_index = floored_start;
+    };
 
     loop {
-        bytebuf.clear();
         let x = if !options.align || i % options.elt_width() == 0 {
             // We are starting on an even offset, no need to handle alignment
-            for _ in 0..options.num_groups {
-                if let Some(x) = reader.read_next(Endianness::BigEndian) {
-                    bytebuf.extend_from_slice(&x);
-                }
-            }
+            let bb = reader.next_n(&mut bytebuf.as_mut_slice()[0..options.elt_width()]).unwrap();
 
-            if bytebuf.len() == options.elt_width() {
-                RowBuf::Full(&bytebuf)
+            if bb.len() == options.elt_width() {
+                RowBuf::Full(&bb)
             } else {
-                RowBuf::Left(&bytebuf)
+                RowBuf::Left(&bb)
             }
         } else {
-            for _ in 0..options.num_groups {
-                if let Some(x) = reader.read_next(Endianness::BigEndian) {
-                    bytebuf.extend_from_slice(&x);
-                }
-            }
+            let bb = reader.next_n(&mut bytebuf[(i % options.elt_width())..options.elt_width()]).unwrap();
 
-            let st = options.elt_width() - (i % options.elt_width());
-
-            if st > 0 {
-                RowBuf::Right(if bytebuf.len() > 0 { &bytebuf[st..] } else { &bytebuf })
+            if bb.len() > 0 {
+                RowBuf::Right(bb)
             } else {
-                RowBuf::Full(&bytebuf)
+                RowBuf::Full(bb)
             }
         };
+
+        let byte_index = truncate_byte_index(i, &options);
 
         if x.is_empty() { break; }
 
         if options.omit_equal_rows {
-            match elide {
-                Some((elide_start, search_char)) => {
-                    let all_eq = x.is_full() && x.as_slice().iter().all(|ch| *ch == search_char);
-                    if all_eq { i += x.len(); row_i += 1; row_index += options.elt_width(); continue; }
-                    else {
-                        let cc = vec![search_char; options.elt_width()];
-                        let xx = RowBuf::Full(&cc);
-                        write_row_idx(w, Some(elide_start * options.elt_width()))?;
-                        write_row(w, &xx);
-                        if options.print_ascii {
-                            w.write_hexdump_str(" ")?;
-                            write_row_ascii(w, &xx)?;
-                        }
-                        w.write_hexdump_str("\n")?;
+            match &elide_search {
+                Some((elide_start, search)) => {
+                    match slice_equals_elision(&x, search) {
+                        true => {
+                            i += x.len();
+                            row_index += 1;
+                            continue;
+                        },
+                        false if !x.is_full() => { }
+                        false => {
+                            let cc = search.into_full_vec(&options);
+                            let xx = RowBuf::Full(&cc);
+                            // write_row_idx(w, Some(elide_start * options.elt_width()))?;
+                            // write_row(w, &xx);
+                            // if options.print_ascii {
+                            //     w.write_hexdump_str(" ")?;
+                            //     write_row_ascii(w, &xx)?;
+                            // }
+                            // w.write_hexdump_str("\n")?;
 
-                        if row_i - elide_start >= 3 {
-                            write_row_idx(w, None)?;
+                            if row_index - elide_start >= 3 {
+                                write_row_idx(w, None)?;
+                                w.write_hexdump_str("\n")?;
+                            }
+
+                            write_row_idx(w, Some((row_index-1) * options.elt_width()))?;
+                            write_row(w, &xx);
+                            if options.print_ascii {
+                                w.write_hexdump_str(" ")?;
+                                write_row_ascii(w, &xx)?;
+                            }
                             w.write_hexdump_str("\n")?;
+                            elide_search = None;
                         }
-
-                        write_row_idx(w, Some((row_i-1) * options.elt_width()))?;
-                        write_row(w, &xx);
-                        if options.print_ascii {
-                            w.write_hexdump_str(" ")?;
-                            write_row_ascii(w, &xx)?;
-                        }
-                        w.write_hexdump_str("\n")?;
-                        elide = None;
                     }
                 }
                 None => {
-                    let search_char = x.as_slice()[0];
-                    let all_eq = x.is_full() && x.as_slice().iter().all(|ch| *ch == search_char);
-                    if all_eq { elide = Some((row_i, search_char)); i += x.len(); row_index += options.elt_width(); row_i += 1; continue; }
+                    let current_elide_search = match options.grouping {
+                        Grouping::Ungrouped { byte_count , spacing } if x.is_full() => {
+                            let search_char = x.as_slice().get(0);
+                            if x.as_slice().iter().all(|ch| *ch == *search_char.unwrap()) {
+                                Some((row_index, ElideSearch::Byte([x.as_slice()[0]])))
+                            } else {
+                                None
+                            }
+                        }
+                        Grouping::Grouped { group_size, num_groups, byte_spacing, group_spacing } if x.is_full() => {
+                            let search_slice = &x.as_slice()[..group_size.element_count()];
+                            let all_eq = x.as_slice().chunks(search_slice.len()).skip(1).all(|s| s == search_slice);
+                            if all_eq {
+                                Some((row_index, match search_slice.len() {
+                                    1 => ElideSearch::Byte(<[u8; 1]>::try_from(search_slice).unwrap()),
+                                    2 => ElideSearch::Short(<[u8; 2]>::try_from(search_slice).unwrap()),
+                                    4 => ElideSearch::Int(<[u8; 4]>::try_from(search_slice).unwrap()),
+                                    8 => ElideSearch::Long(<[u8; 8]>::try_from(search_slice).unwrap()),
+                                    16 => ElideSearch::ULong(<[u8; 16]>::try_from(search_slice).unwrap()),
+                                    _ => unreachable!()
+                                }))
+                            } else {
+                                None
+                            }
+                        },
+                        _ => None
+                    };
+
+                    match current_elide_search {
+                        Some(es) => { elide_search = Some(es); }
+                        None => { }
+                    }
                 }
-            }
+            };
         }
 
-        write_row_idx(w, Some(row_index))?;
+        write_row_idx(w, Some(byte_index))?;
         write_row(w, &x);
         if options.print_ascii {
             w.write_hexdump_str(" ")?;
@@ -407,8 +491,7 @@ pub fn hexdump_into_rr<
         }
         w.write_hexdump_str("\n")?;
         i += x.len();
-        row_i += 1;
-        row_index += options.elt_width();
+        row_index += 1;
     }
 
     return Ok(());
@@ -464,6 +547,95 @@ pub struct SliceGroupedReader<'a, U: EndianBytes<N>, const N: usize> {
     index: usize
 }
 
+pub struct SliceGroupedByteReader<'a, U: EndianBytes<N>, const N: usize> {
+    slice: &'a [U],
+    elt_index: usize,
+    u_index: usize,
+    current_elt: Option<[u8; N]>,
+    endianness: Endianness
+}
+
+impl<'a, U: EndianBytes<N>, const N: usize> MyByteReader for SliceGroupedByteReader<'a, U, N> {
+    type Error = Infallible;
+
+    fn next_n<'buf>(&mut self, buf: &'buf mut[u8]) -> Result<&'buf [u8], Self::Error> {
+        Ok(self.next_bytes(buf))
+    }
+
+    fn skip_n(&mut self, n: usize) -> Result<usize, Self::Error> {
+        self.advance_indices_by(n);
+        Ok(n)
+    }
+}
+
+impl<'a, U: EndianBytes<N>, const N: usize> SliceGroupedByteReader<'a, U, N> {
+    pub fn new(slice: &'a [U], endianness: Endianness) -> Self {
+        let current_elt = if slice.len() > 0 { Some(slice[0].to_bytes(endianness)) } else { None };
+        Self { slice, elt_index: 0, u_index: 0, current_elt, endianness }
+    }
+    pub fn next_bytes<'buf>(&mut self, o: &'buf mut [u8]) -> &'buf [u8] {
+        for i in 0..o.len() {
+            if let Some(cb) = self.next_byte() {
+                o[i] = cb;
+            } else {
+                return &o[..i];
+            }
+        }
+        &o[..]
+    }
+
+    fn next_byte(&mut self) -> Option<u8> {
+        // dbg!(self.current_elt, self.u_index);
+        let o = self.current_elt.map(|ce| ce[self.u_index]);
+        self.advance_indices();
+        o
+    }
+
+    fn advance_indices(&mut self) {
+        self.u_index += 1;
+        if self.u_index >= N {
+            self.u_index = 0;
+            self.elt_index += 1;
+            self.current_elt = if self.elt_index < self.slice.len() {
+                Some(self.slice[self.elt_index].to_bytes(self.endianness))
+            } else { 
+                None 
+            }
+        }
+    }
+
+    fn advance_indices_by(&mut self, adv: usize) {
+        if N == 1 {
+            self.elt_index = adv;
+            self.u_index = 0;
+            self.current_elt = if self.elt_index < self.slice.len() {
+                Some(self.slice[self.elt_index].to_bytes(self.endianness))
+            } else {
+                None
+            };
+            return;
+        }
+        let mut adv = adv;
+        if self.u_index > 0 {
+            adv -= N - self.u_index;
+            self.u_index = 0;
+            self.elt_index += 1;
+        }
+
+        while adv > N {
+            adv -= N;
+            self.u_index = 0;
+            self.elt_index += 1;
+        }
+
+        self.current_elt = if self.elt_index < self.slice.len() { Some(self.slice[self.elt_index].to_bytes(self.endianness)) } else { None };
+
+        if adv > 0 {
+            self.u_index = adv;
+        }
+    }
+}
+
 impl<'a, U: EndianBytes<N>, const N: usize> SliceGroupedReader<'a, U, N> {
     pub fn new(slice: &'a [U]) -> Self {
         Self { slice, index: 0 }
@@ -490,15 +662,15 @@ impl<'a, const N: usize, U: EndianBytes<N>> GroupedReader<N> for SliceGroupedRea
 
 pub trait MyByteReader {
     type Error: Debug;
-    fn next_n<'buf>(&mut self, buf: &'buf mut[u8], n: usize) -> Result<&'buf [u8], Self::Error>;
+    fn next_n<'buf>(&mut self, buf: &'buf mut[u8]) -> Result<&'buf [u8], Self::Error>;
     fn skip_n(&mut self, n: usize) -> Result<usize, Self::Error>;
 }
 
 impl<'b, T: Iterator<Item = &'b u8>> MyByteReader for T {
     type Error = Infallible;
-    fn next_n<'a>(&mut self, buf: &'a mut[u8], n: usize) -> Result<&'a [u8], Self::Error> {
+    fn next_n<'a>(&mut self, buf: &'a mut[u8]) -> Result<&'a [u8], Self::Error> {
         let mut i = 0;
-        while i < n {
+        while i < buf.len() {
             match self.next() {
                 Some(u) => { buf[i] = *u; }
                 None => {
