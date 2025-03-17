@@ -40,8 +40,10 @@ fn dump_this(slice: &[u8]) {
 // aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 // End
 
+
 fn main() {
     dump_this(&vec_main_rs());
+    // dbg!(usize::BITS);
     // f.extend_from_slice(&[0xaabb88ffu32; 20]);
 
     // let mut sgbr = SliceGroupedByteReader::new(&f, hexdump::Endianness::LittleEndian);
