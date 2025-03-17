@@ -1,13 +1,3 @@
-/*
-Design a b-tree that is stored on disk.
-This must have an ordered key and handle storing records of variable lengths.
-
-The b-tree will be stored in pages of length 4096. Each page will be either a
- - leaf page containing one or more records
- - interior page containing references to leaf pages and 
-   their corresponding ranges
-*/
-
 use std::{cmp::min, env::set_current_dir, fmt::{Arguments, Debug}, fs, io::{BufRead, Write}, ops::{Bound, Deref, Range, RangeBounds}, str};
 
 use hexdump::{hexdump_into_rr, HexdumpIoWriter, HexdumpOptions, HexdumpRange, MyByteReader, SliceGroupedByteReader, SliceGroupedReader, WriteHexdump};
@@ -27,6 +17,11 @@ fn vec_001() -> Vec<u8> {
     f
 }
 
+fn vec_main_rs() -> Vec<u8> {
+    let main_file = fs::read("./src/main.rs").unwrap();
+    main_file
+}
+
 fn dump_this(slice: &[u8]) {
     let mut sg = SliceGroupedByteReader::new(slice, hexdump::Endianness::BigEndian);
     let mut writer = HexdumpIoWriter(std::io::stdout());
@@ -34,18 +29,19 @@ fn dump_this(slice: &[u8]) {
         &mut writer, 
         &mut sg, HexdumpOptions {
             omit_equal_rows: true,
-            // group_size: hexdump::GroupSize::Int,
-            print_range: HexdumpRange {
-               skip: 10,
-               limit: None
-            },
-            grouping: hexdump::Grouping::Grouped { group_size: hexdump::GroupSize::Short, num_groups: 8, byte_spacing: hexdump::Spacing::None, group_spacing: hexdump::Spacing::Normal},
+            print_range: HexdumpRange::new(0xc0..0xf0),
+            grouping: hexdump::Grouping::Grouped { group_size: hexdump::GroupSize::Int, num_groups: 4, byte_spacing: hexdump::Spacing::None, group_spacing: hexdump::Spacing::Normal},
             ..Default::default()
         }).unwrap();
 }
 
+// Start
+// bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+// aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+// End
+
 fn main() {
-    dump_this(&vec_000());
+    dump_this(&vec_main_rs());
     // f.extend_from_slice(&[0xaabb88ffu32; 20]);
 
     // let mut sgbr = SliceGroupedByteReader::new(&f, hexdump::Endianness::LittleEndian);

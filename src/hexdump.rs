@@ -1,4 +1,4 @@
-use std::{any::Any, convert::Infallible, fmt::{Arguments, Debug}, io::BufRead, ops::{BitAnd, Bound, Range, RangeBounds, RangeFull, Shr}, ptr::addr_eq};
+use std::{any::Any, cmp::min, convert::Infallible, fmt::{Arguments, Debug}, io::BufRead, ops::{BitAnd, Bound, Range, RangeBounds, RangeFull, Shr}, ptr::addr_eq};
 
 pub struct HexdumpIoWriter<W>(pub W) where W: std::io::Write;
 pub struct HexdumpFmtWriter<W>(pub W) where W: std::fmt::Write;
@@ -32,6 +32,23 @@ impl<W> WriteHexdump for HexdumpFmtWriter<W> where W: std::fmt::Write {
 pub struct HexdumpRange {
     pub skip: usize,
     pub limit: Option<usize>
+}
+
+impl HexdumpRange {
+    pub fn new<R: RangeBounds<usize>>(r: R) -> Self {
+        let skip = match r.start_bound() {
+            Bound::Unbounded => 0usize,
+            Bound::Included(s) => *s,
+            Bound::Excluded(s) => s + 1
+        };
+        let limit = match r.end_bound() {
+            Bound::Unbounded => None,
+            Bound::Included(s) => Some(*s + 1),
+            Bound::Excluded(s) => Some(*s)
+        };
+
+        Self { skip, limit }
+    }
 }
 
 pub struct HexdumpOptions {
@@ -292,6 +309,7 @@ pub fn hexdump_into_rr<
     Reader: MyByteReader
 >(w: &mut W, reader: &mut Reader, options: HexdumpOptions) -> Result<(), W::Error> {
     let start = options.print_range.skip;
+    let end = options.print_range.limit;
 
     let aligned_index_into = |c: &RowBuf, i: usize| {
         match c {
@@ -364,10 +382,9 @@ pub fn hexdump_into_rr<
     let mut bytebuf: Vec<u8> = vec![0u8; options.elt_width()];
 
     let mut i = start;
-    let mut row_index = 0usize;
 
     if start > 0 {
-        reader.skip_n(start);
+        reader.skip_n(start).unwrap();
     }
 
     let mut elide_search: Option<(usize, ElideSearch)> = None;
@@ -386,9 +403,16 @@ pub fn hexdump_into_rr<
     };
 
     loop {
+        if let Some(end_at) = end {
+            if i >= end_at {
+                break;
+            }
+        }
         let x = if !options.align || i % options.elt_width() == 0 {
-            // We are starting on an even offset, no need to handle alignment
-            let bb = reader.next_n(&mut bytebuf.as_mut_slice()[0..options.elt_width()]).unwrap();
+            let take = end
+                .map(|end_at| if i <= end_at { min(end_at - i, options.elt_width()) } else { 0 })
+                .unwrap_or(options.elt_width());
+            let bb = reader.next_n(&mut bytebuf.as_mut_slice()[0..take]).unwrap();
 
             if bb.len() == options.elt_width() {
                 RowBuf::Full(&bb)
@@ -415,7 +439,6 @@ pub fn hexdump_into_rr<
                     match slice_equals_elision(&x, search) {
                         true => {
                             i += x.len();
-                            row_index += 1;
                             continue;
                         },
                         false if !x.is_full() => { }
@@ -430,12 +453,12 @@ pub fn hexdump_into_rr<
                             // }
                             // w.write_hexdump_str("\n")?;
 
-                            if row_index - elide_start >= 3 {
+                            if byte_index - elide_start >= options.elt_width() * 3 {
                                 write_row_idx(w, None)?;
                                 w.write_hexdump_str("\n")?;
                             }
 
-                            write_row_idx(w, Some((row_index-1) * options.elt_width()))?;
+                            write_row_idx(w, Some(byte_index - options.elt_width()))?;
                             write_row(w, &xx);
                             if options.print_ascii {
                                 w.write_hexdump_str(" ")?;
@@ -451,7 +474,7 @@ pub fn hexdump_into_rr<
                         Grouping::Ungrouped { byte_count , spacing } if x.is_full() => {
                             let search_char = x.as_slice().get(0);
                             if x.as_slice().iter().all(|ch| *ch == *search_char.unwrap()) {
-                                Some((row_index, ElideSearch::Byte([x.as_slice()[0]])))
+                                Some((byte_index, ElideSearch::Byte([x.as_slice()[0]])))
                             } else {
                                 None
                             }
@@ -460,7 +483,7 @@ pub fn hexdump_into_rr<
                             let search_slice = &x.as_slice()[..group_size.element_count()];
                             let all_eq = x.as_slice().chunks(search_slice.len()).skip(1).all(|s| s == search_slice);
                             if all_eq {
-                                Some((row_index, match search_slice.len() {
+                                Some((byte_index, match search_slice.len() {
                                     1 => ElideSearch::Byte(<[u8; 1]>::try_from(search_slice).unwrap()),
                                     2 => ElideSearch::Short(<[u8; 2]>::try_from(search_slice).unwrap()),
                                     4 => ElideSearch::Int(<[u8; 4]>::try_from(search_slice).unwrap()),
@@ -491,7 +514,6 @@ pub fn hexdump_into_rr<
         }
         w.write_hexdump_str("\n")?;
         i += x.len();
-        row_index += 1;
     }
 
     return Ok(());
