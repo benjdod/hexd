@@ -1,4 +1,4 @@
-use std::{any::Any, cmp::{max, min}, convert::Infallible, fmt::{Arguments, Debug}, io::BufRead, ops::{BitAnd, Bound, Range, RangeBounds, RangeFull, Shr}, ptr::addr_eq};
+use std::{cmp::{max, min}, convert::Infallible, fmt::Debug, ops::{BitAnd, Bound, RangeBounds, Shr}};
 
 pub struct HexdumpIoWriter<W>(pub W) where W: std::io::Write;
 pub struct HexdumpFmtWriter<W>(pub W) where W: std::fmt::Write;
@@ -6,7 +6,6 @@ pub struct HexdumpFmtWriter<W>(pub W) where W: std::fmt::Write;
 pub trait WriteHexdump {
     type Error: Debug;
     fn write_hexdump_str(&mut self, s: &str) -> Result<(), Self::Error>;
-    fn write_hexdump_fmt(&mut self, args: Arguments<'_>) -> Result<(), Self::Error>;
 }
 
 impl<W> WriteHexdump for HexdumpIoWriter<W> where W: std::io::Write {
@@ -14,18 +13,12 @@ impl<W> WriteHexdump for HexdumpIoWriter<W> where W: std::io::Write {
     fn write_hexdump_str(&mut self, s: &str) -> Result<(), std::io::Error> {
         self.0.write_all(s.as_bytes())
     }
-    fn write_hexdump_fmt(&mut self, args: Arguments<'_>) -> Result<(), Self::Error> {
-        self.0.write_fmt(args)
-    }
 }
 
 impl<W> WriteHexdump for HexdumpFmtWriter<W> where W: std::fmt::Write {
     type Error = std::fmt::Error;
     fn write_hexdump_str(&mut self, s: &str) -> Result<(), Self::Error> {
         self.0.write_str(s)
-    }
-    fn write_hexdump_fmt(&mut self, args: Arguments<'_>) -> Result<(), Self::Error> {
-        self.0.write_fmt(args)
     }
 }
 
@@ -57,10 +50,6 @@ pub struct HexdumpOptions {
     pub print_ascii: bool,
     pub align: bool,
     pub grouping: Grouping,
-    // pub group_size: GroupSize,
-    // pub byte_spacing: Spacing,
-    // pub num_groups: usize,
-    // pub group_spacing: Spacing,
     pub print_range: HexdumpRange,
     pub index_offset: IndexOffset
 }
@@ -245,6 +234,7 @@ fn number_to_hex<T: BitAnd<usize, Output = T> + Shr<T, Output = T> + Copy + TryI
     }
 }
 
+#[derive(Debug)]
 enum ElideSearch {
     Byte([u8; 1]),
     Short([u8; 2]),
@@ -274,11 +264,6 @@ impl<const N: usize> StackBuffer<N> {
         self.buffer.as_mut_slice()
     }
 
-    fn as_mut_range_slice<'a>(&'a mut self, start: usize, end: usize) -> &'a mut [u8] {
-        let i = &mut self.buffer.as_mut_slice()[start..end];
-        i
-    }
-
     fn push(&mut self, b: u8) {
         self.check_extension(1);
         self.buffer[self.len] = b;
@@ -295,6 +280,10 @@ impl<const N: usize> StackBuffer<N> {
         self.check_extension(other.len());
         self.buffer[self.len..self.len + other.len()].copy_from_slice(other);
         self.len += other.len();
+    }
+
+    fn as_str<'a>(&'a self) -> &'a str {
+        std::str::from_utf8(self.as_slice()).unwrap()
     }
 }
 
@@ -314,14 +303,6 @@ impl ElideSearch {
             Self::ULong(b) => b
         }
     }
-
-    // fn into_full_vec(&self, options: &HexdumpOptions) -> Vec<u8> {
-    //     let mut o: Vec<u8> = Vec::with_capacity(options.elt_width());
-    //     while o.len() < options.elt_width() {
-    //         o.extend_from_slice(self.as_slice());
-    //     }
-    //     o
-    // }
 
     fn into_stack_buffer<const N: usize>(&self, options: &HexdumpOptions) -> StackBuffer::<N> {
         let mut o = StackBuffer::<N>::new();
@@ -380,7 +361,8 @@ fn hexwidth_of(u: usize) -> usize {
 
 pub fn hexdump_into_rr<
     W: WriteHexdump, 
-    Reader: MyByteReader
+    Reader: MyByteReader,
+    const N: usize
 >(w: &mut W, reader: &mut Reader, options: HexdumpOptions) -> Result<(), W::Error> {
     let start = options.print_range.skip;
     let end = options.print_range.limit;
@@ -399,9 +381,7 @@ pub fn hexdump_into_rr<
         }
     };
 
-    let write_row = |writer: &mut W, c: &RowBuf| {
-        let mut b = StackBuffer::<128>::new();
-
+    let write_row = |buffer: &mut StackBuffer<N>, c: &RowBuf| {
         for i in 0..options.elt_width() {
             let ch = aligned_index_into(c, i);
 
@@ -409,19 +389,15 @@ pub fn hexdump_into_rr<
                 Some(ch) => if options.uppercase { ch.to_hex_upper() } else { ch.to_hex_lower() },
                 None => [b' ', b' ']
             };
-            b.push(hi);
-            b.push(lo);
-            b.extend_from_slice(options.spacing_for_element_index(i).as_spaces());
+            buffer.push(hi);
+            buffer.push(lo);
+            buffer.extend_from_slice(options.spacing_for_element_index(i).as_spaces());
         }
-
-        let s = std::str::from_utf8(b.as_slice()).unwrap();
-
-        writer.write_hexdump_str(s).unwrap();
     };
 
     let index_max_hexwidth = max(8, hexwidth_of(reader.total_byte_hint().unwrap_or(0)));
 
-    let write_row_idx = |writer: &mut W, idx: Option<usize>| {
+    let write_row_idx = |buffer: &mut StackBuffer<N>, idx: Option<usize>| {
         match idx {
             Some(i) => {
                 let i = match options.index_offset {
@@ -431,11 +407,11 @@ pub fn hexdump_into_rr<
                 let mut oo = [0u8; 32];
                 let o = &mut oo.as_mut_slice()[..index_max_hexwidth];
                 number_to_hex(i, o, false);
-                writer.write_hexdump_str(std::str::from_utf8(o).unwrap())?;
-                writer.write_hexdump_str("    ")
+                buffer.extend_from_slice(o);
+                buffer.extend_from_slice(b"    ")
             }
             None => {
-                writer.write_hexdump_str(" --snip--     ")// 
+                buffer.extend_from_slice(b" --snip--     ")// 
             }
         }
     };
@@ -444,8 +420,7 @@ pub fn hexdump_into_rr<
         ch.is_ascii_alphanumeric() || ch.is_ascii_punctuation() || ch == ' '
     };
 
-    let write_row_ascii = |writer: &mut W, c: &RowBuf| {
-        // let mut v: Vec<u8> = Vec::with_capacity(options.elt_width() + 2);
+    let write_row_ascii = |buffer: &mut StackBuffer<N>, c: &RowBuf| {
         let mut v = StackBuffer::<128>::new();
         v.push(b'|');
         for i in 0..options.elt_width() {
@@ -455,9 +430,7 @@ pub fn hexdump_into_rr<
             });
         }
         v.push(b'|');
-        let s = std::str::from_utf8(v.as_slice()).unwrap();
-        writer.write_hexdump_str(&s)?;
-        Ok::<(), W::Error>(())
+        buffer.extend_from_slice(v.as_slice());
     };
 
     let mut bytebuf = StackBuffer::<256>::new();
@@ -483,9 +456,36 @@ pub fn hexdump_into_rr<
         }
     };
 
+    let terminate_elision = |sb: &mut StackBuffer<N>, search: (usize, &ElideSearch), byte_index: usize| {
+        let (elide_start, search) = search;
+        let cc = search.into_stack_buffer::<256>(&options);
+        let xx = RowBuf::Full(cc.as_slice());
+
+        // Write "snip"
+        if byte_index - elide_start >= options.elt_width() * 3 {
+            write_row_idx(sb, None);
+            sb.push(b'\n');
+        }
+
+        write_row_idx(sb, Some(byte_index - options.elt_width()));
+        write_row(sb, &xx);
+        if options.print_ascii {
+            sb.push(b' ');
+            write_row_ascii(sb, &xx);
+        }
+        sb.push(b'\n');
+    };
+
+    let mut sb = StackBuffer::<N>::new();
+
     loop {
+        sb.clear();
         if let Some(end_at) = end {
             if i >= end_at {
+                if let Some((elide_start, search)) = elide_search {
+                    terminate_elision(&mut sb, (elide_start, &search), truncate_byte_index(end_at, &options));
+                    w.write_hexdump_str(sb.as_str()).unwrap();
+                }
                 break;
             }
         }
@@ -512,7 +512,13 @@ pub fn hexdump_into_rr<
 
         let byte_index = truncate_byte_index(i, &options);
 
-        if x.is_empty() { break; }
+        if x.is_empty() { 
+            if let Some((elide_start, search)) = elide_search {
+                terminate_elision(&mut sb, (elide_start, &search), byte_index);
+                w.write_hexdump_str(sb.as_str()).unwrap();
+            }
+            break; 
+        }
 
         if options.omit_equal_rows {
             match &elide_search {
@@ -524,21 +530,22 @@ pub fn hexdump_into_rr<
                         },
                         false if !x.is_full() => { }
                         false => {
-                            let cc = search.into_stack_buffer::<256>(&options);
-                            let xx = RowBuf::Full(cc.as_slice());
+                            terminate_elision(&mut sb, (*elide_start, search), byte_index);
+                            // let cc = search.into_stack_buffer::<256>(&options);
+                            // let xx = RowBuf::Full(cc.as_slice());
 
-                            if byte_index - elide_start >= options.elt_width() * 3 {
-                                write_row_idx(w, None)?;
-                                w.write_hexdump_str("\n")?;
-                            }
+                            // if byte_index - elide_start >= options.elt_width() * 3 {
+                            //     write_row_idx(&mut sb, None);
+                            //     sb.push(b'\n');
+                            // }
 
-                            write_row_idx(w, Some(byte_index - options.elt_width()))?;
-                            write_row(w, &xx);
-                            if options.print_ascii {
-                                w.write_hexdump_str(" ")?;
-                                write_row_ascii(w, &xx)?;
-                            }
-                            w.write_hexdump_str("\n")?;
+                            // write_row_idx(&mut sb, Some(byte_index - options.elt_width()));
+                            // write_row(&mut sb, &xx);
+                            // if options.print_ascii {
+                            //     sb.push(b' ');
+                            //     write_row_ascii(&mut sb, &xx);
+                            // }
+                            // sb.push(b'\n');
                             elide_search = None;
                         }
                     }
@@ -580,13 +587,16 @@ pub fn hexdump_into_rr<
             };
         }
 
-        write_row_idx(w, Some(byte_index))?;
-        write_row(w, &x);
+        write_row_idx(&mut sb, Some(byte_index));
+        write_row(&mut sb, &x);
         if options.print_ascii {
-            w.write_hexdump_str(" ")?;
-            write_row_ascii(w, &x)?;
+            sb.push(b' ');
+            write_row_ascii(&mut sb, &x);
         }
-        w.write_hexdump_str("\n")?;
+        sb.push(b'\n');
+
+        w.write_hexdump_str(sb.as_str()).unwrap();
+
         i += x.len();
     }
 
@@ -629,12 +639,97 @@ impl EndianBytes<2> for u16 {
     }
 }
 
+impl EndianBytes<2> for i16 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 2] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
 impl EndianBytes<4> for u32 {
     fn to_bytes(&self, endianness: Endianness) -> [u8; 4] {
         match endianness {
             Endianness::BigEndian => self.to_be_bytes(),
             Endianness::LittleEndian => self.to_le_bytes()
         }
+    }
+}
+
+impl EndianBytes<4> for i32 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 4] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<8> for u64 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 8] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<8> for i64 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 8] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<16> for u128 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 16] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<16> for i128 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 16] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+pub struct ByteSliceReader<'a> {
+    slice: &'a [u8],
+    index: usize
+}
+
+impl<'a> ByteSliceReader<'a> {
+    pub fn new(slice: &'a [u8]) -> ByteSliceReader<'a> {
+        Self { slice, index: 0usize }
+    }
+}
+
+impl<'a> MyByteReader for ByteSliceReader<'a> {
+    type Error = Infallible;
+
+    fn next_n<'buf>(&mut self, buf: &'buf mut[u8]) -> Result<&'buf [u8], Self::Error> {
+        let end = min(self.index + buf.len(), self.slice.len()) - self.index;
+        buf[..end].copy_from_slice(&self.slice[self.index..self.index + end]);
+        self.index += end;
+        Ok(&buf[..end])
+    }
+
+    fn skip_n(&mut self, n: usize) -> Result<usize, Self::Error> {
+        self.index += n;
+        Ok(self.index)
+    }
+
+    fn total_byte_hint(&self) -> Option<usize> {
+        Some(self.slice.len())
     }
 }
 
@@ -685,7 +780,6 @@ impl<'a, U: EndianBytes<N>, const N: usize> SliceGroupedByteReader<'a, U, N> {
     }
 
     fn next_byte(&mut self) -> Option<u8> {
-        // dbg!(self.current_elt, self.u_index);
         let o = self.current_elt.map(|ce| ce[self.u_index]);
         self.advance_indices();
         o

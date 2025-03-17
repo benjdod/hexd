@@ -1,6 +1,6 @@
 use std::{cmp::min, env::set_current_dir, fmt::{Arguments, Debug}, fs, io::{BufRead, Write}, ops::{Bound, Deref, Range, RangeBounds}, str};
 
-use hexdump::{hexdump_into_rr, HexdumpIoWriter, HexdumpOptions, HexdumpRange, MyByteReader, SliceGroupedByteReader, SliceGroupedReader, WriteHexdump};
+use hexdump::{hexdump_into_rr, ByteSliceReader, HexdumpIoWriter, HexdumpOptions, HexdumpRange, MyByteReader, SliceGroupedByteReader, SliceGroupedReader, WriteHexdump};
 
 mod hexdump;
 
@@ -17,19 +17,27 @@ fn vec_001() -> Vec<u8> {
     f
 }
 
+fn vec_long_empty() -> Vec<u8> {
+    let mut o = vec![0u8; 4096];
+    o.extend_from_slice(&[0x11u8; 4096]);
+    o.extend_from_slice(&[0x22u8; 4096]);
+    o
+}
+
 fn vec_main_rs() -> Vec<u8> {
     let main_file = fs::read("./src/main.rs").unwrap();
     main_file
 }
 
 fn dump_this(slice: &[u8]) {
-    let mut sg = SliceGroupedByteReader::new(slice, hexdump::Endianness::BigEndian);
+    // let mut sg = SliceGroupedByteReader::new(slice, hexdump::Endianness::BigEndian);
+    let mut sg = ByteSliceReader::new(slice);
     let mut writer = HexdumpIoWriter(std::io::stdout());
-    hexdump_into_rr(
+    hexdump_into_rr::<_, _, 4096>(
         &mut writer, 
         &mut sg, HexdumpOptions {
             omit_equal_rows: true,
-            print_range: HexdumpRange::new(0xc0..0xf0),
+            print_range: HexdumpRange::new(0xc00..),
             grouping: hexdump::Grouping::Grouped { group_size: hexdump::GroupSize::Int, num_groups: 4, byte_spacing: hexdump::Spacing::None, group_spacing: hexdump::Spacing::Normal},
             ..Default::default()
         }).unwrap();
@@ -42,7 +50,8 @@ fn dump_this(slice: &[u8]) {
 
 
 fn main() {
-    dump_this(&vec_main_rs());
+    // println!("{:#x}", usize::MAX);
+    dump_this(&&vec_long_empty());
     // dbg!(usize::BITS);
     // f.extend_from_slice(&[0xaabb88ffu32; 20]);
 
