@@ -1,4 +1,4 @@
-use std::{cmp::{max, min}, convert::Infallible, fmt::Debug, ops::{BitAnd, Bound, RangeBounds, Shr}};
+use std::{char::MAX, cmp::{max, min}, convert::Infallible, f32::consts::LN_10, fmt::Debug, iter::Peekable, ops::{BitAnd, Bound, RangeBounds, Shr}, sync::Arc};
 
 pub struct HexdumpIoWriter<W>(pub W) where W: std::io::Write;
 pub struct HexdumpFmtWriter<W>(pub W) where W: std::fmt::Write;
@@ -22,6 +22,7 @@ impl<W> WriteHexdump for HexdumpFmtWriter<W> where W: std::fmt::Write {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct HexdumpRange {
     pub skip: usize,
     pub limit: Option<usize>
@@ -44,6 +45,7 @@ impl HexdumpRange {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct HexdumpOptions {
     pub omit_equal_rows: bool,
     pub uppercase: bool,
@@ -80,6 +82,16 @@ impl Grouping {
             &Grouping::Ungrouped { byte_count, spacing: _ } => byte_count,
             &Grouping::Grouped { group_size, num_groups, byte_spacing: _, group_spacing: _ } => {
                 group_size.element_count() * num_groups
+            }
+        }
+    }
+
+    pub fn spacing_for_index(&self, index: usize) -> Spacing {
+        match self {
+            &Grouping::Ungrouped { byte_count: _, spacing } => spacing,
+            &Grouping::Grouped { group_size, num_groups: _, byte_spacing, group_spacing } => {
+                let elt_count = group_size.element_count();
+                if index % elt_count == elt_count - 1 { group_spacing } else { byte_spacing }
             }
         }
     }
@@ -216,6 +228,22 @@ impl ToHex for u8 {
     }
 }
 
+trait HexVisualWidth {
+    fn hex_visual_width(&self) -> usize;
+}
+
+impl HexVisualWidth for usize {
+    fn hex_visual_width(&self) -> usize {
+        let mut u = *self;
+        let mut i = 0usize;
+        while u > 0 {
+            u >>= 4;
+            i += 1;
+        }
+        i
+    }
+}
+
 fn number_to_hex<T: BitAnd<usize, Output = T> + Shr<T, Output = T> + Copy + TryInto<u8> + From<u8>>(n: T, o: &mut [u8], is_upper: bool) where <T as TryInto<u8>>::Error: Debug {
     let shr: T = 4.into();
     let mut nn = n;
@@ -243,9 +271,19 @@ enum ElideSearch {
     ULong([u8; 16])
 }
 
+#[derive(Clone, PartialEq, Eq)]
 struct StackBuffer<const N: usize> {
     buffer: [u8; N],
     len: usize
+}
+
+impl<const N: usize> std::fmt::Debug for StackBuffer<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StackBuffer")
+            .field("slice", &self.as_slice())
+            .field("len", &self.len)
+            .finish()
+    }
 }
 
 impl<const N: usize> StackBuffer<N> {
@@ -897,5 +935,293 @@ impl<'b, T: Iterator<Item = &'b u8>> MyByteReader for T {
             (lower, None) if lower > 0 => { Some(lower) },
             _ => None
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RowBuffer {
+    buffer: StackBuffer<MAX_BUFFER_SIZE>,
+    length: usize,
+    row_index: usize,
+    elt_index: usize
+}
+
+impl RowBuffer {
+    fn is_right_aligned(&self) -> bool {
+        self.elt_index != self.row_index
+    }
+}
+
+const MAX_BUFFER_SIZE: usize = 4096;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum HexdumpLineIteratorState {
+    NotStarted,
+    InProgress,
+    Completed
+}
+
+pub struct HexdumpLineIterator<R: MyByteReader> {
+    reader: R,
+    index: usize,
+    options: HexdumpOptions,
+    state: HexdumpLineIteratorState,
+    elision_match: Option<ElisionMatch>
+}
+
+#[derive(Debug, Clone)]
+struct ElisionMatch {
+    starting_index: usize,
+    buffer: StackBuffer<MAX_BUFFER_SIZE>,
+    grouping: Grouping
+}
+
+impl ElisionMatch {
+    fn try_match(row: &RowBuffer, options: &HexdumpOptions) -> Option<Self> {
+        let buffer = &row.buffer;
+        match options.grouping {
+            _ if buffer.len != options.elt_width() => None,
+            Grouping::Ungrouped { byte_count: _, spacing: _ } => {
+                let sc = buffer.buffer[0];
+                if buffer.as_slice().iter().all(|b| *b == sc) {
+                    Some(ElisionMatch { starting_index: row.elt_index, buffer: buffer.clone(), grouping: options.grouping })
+                } else {
+                    None
+                }
+            },
+            Grouping::Grouped { group_size, num_groups, byte_spacing, group_spacing } => {
+                let group_size = group_size.element_count();
+                let s = &buffer.as_slice()[..group_size];
+                if s.chunks(group_size).all(|chunk| { 
+                    chunk == s 
+                }) {
+                    Some(ElisionMatch { starting_index: row.elt_index, buffer: buffer.clone(), grouping: options.grouping })
+                } else {
+                    None
+                }
+            },
+        }
+    }
+
+    fn matches(&self, row: &RowBuffer, options: &HexdumpOptions) -> bool {
+        if row.buffer.len == options.elt_width() {
+            self.buffer == row.buffer
+        } else {
+            false
+        }
+    }
+}
+
+impl<'a, R: MyByteReader> HexdumpLineIterator<R> {
+    pub fn new(reader: R, options: HexdumpOptions) -> Self {
+        Self { reader, index: 0, options, state: HexdumpLineIteratorState::NotStarted, elision_match: None }
+    }
+
+    fn read_into_buffer(&mut self, len: usize) -> RowBuffer {
+        let mut buffer = StackBuffer::<MAX_BUFFER_SIZE>::new();
+
+        let length = {
+            let n = self.reader.next_n(&mut buffer.as_mut_slice()[..len]).unwrap();
+            n.len()
+        };
+
+        buffer.len += length;
+
+        let o = RowBuffer { buffer, length, row_index: self.calculate_row_index(), elt_index: self.index };
+        self.index += length;
+        self.state = HexdumpLineIteratorState::InProgress;
+        o
+    }
+
+    fn calculate_row_index(&self) -> usize {
+        if !self.options.align {
+            self.index
+        } else {
+            self.index / self.options.elt_width() * self.options.elt_width()
+        }
+    }
+}
+
+pub enum LineIteratorResult {
+    Elided(RowBuffer),
+    Row(RowBuffer)
+}
+
+impl<R: MyByteReader> Iterator for HexdumpLineIterator<R> {
+    type Item = LineIteratorResult;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        let st = self.state;
+        match st {
+            HexdumpLineIteratorState::NotStarted | HexdumpLineIteratorState::InProgress => {
+                if self.state == HexdumpLineIteratorState::NotStarted && self.options.print_range.skip > 0 {
+                    self.reader.skip_n(self.options.print_range.skip).unwrap();
+                    self.index = self.options.print_range.skip;
+                }
+
+                let read_len = if self.state == HexdumpLineIteratorState::NotStarted && self.options.align {
+                    self.options.elt_width() - (self.index % self.options.elt_width())
+                } else {
+                    self.options.elt_width()
+                };
+
+                self.state = HexdumpLineIteratorState::InProgress;
+
+                let rowbuffer = self.read_into_buffer(read_len);
+                if self.options.omit_equal_rows {
+                    match &self.elision_match {
+                        Some(em) => {
+                            if em.matches(&rowbuffer, &self.options) {
+                                return Some(LineIteratorResult::Elided(rowbuffer))
+                            } else {
+                                self.elision_match = None;
+                            }
+                        },
+                        None => {
+                            if let Some(elision_match) = ElisionMatch::try_match(&rowbuffer, &self.options)  {
+                                self.elision_match = Some(elision_match);
+                            }
+                        }
+                    }
+                }
+                if rowbuffer.length > 0 {
+                    Some(LineIteratorResult::Row(rowbuffer))
+                } else {
+                    self.state = HexdumpLineIteratorState::Completed;
+                    None
+                }
+            }
+            HexdumpLineIteratorState::Completed => None
+        }
+    }
+}
+
+pub struct HexdumpLineWriter<R: MyByteReader, W: WriteHexdump> {
+    line_iterator: HexdumpLineIterator<R>,
+    writer: W,
+    elided_row: Option<RowBuffer>,
+    str_buffer: StackBuffer<256>,
+    options: HexdumpOptions
+}
+
+impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
+    pub fn new(reader: R, writer: W, options: HexdumpOptions) -> Self {
+        let line_iterator = HexdumpLineIterator::new(reader, options.clone());
+        Self { line_iterator: line_iterator, writer, elided_row: None, str_buffer: StackBuffer::<256>::new(), options }
+    }
+
+    pub fn do_hexdump(&mut self) {
+        let mut i = 0usize;
+        while let Some(r) = self.line_iterator.next() {
+            match r {
+                LineIteratorResult::Row(r) => {
+                    if self.elided_row.is_some() {
+                        self.write_elision();
+                        self.flush();
+
+                        let elided_row = self.elided_row.clone().unwrap();
+                        self.write_row_index(r.row_index - self.options.elt_width());
+                        self.write_row_bytes(&elided_row);
+                        self.write_row_ascii(&elided_row);
+                        self.flush();
+                    }
+                    self.elided_row = None;
+                    self.write_row_index(r.row_index);
+                    self.write_row_bytes(&r);
+                    self.write_row_ascii(&r);
+                },
+                LineIteratorResult::Elided(r) => {
+                    if self.elided_row.is_none() {
+                        self.elided_row = Some(r);
+                    } 
+                }
+            }
+
+            self.flush();
+            i += 1;
+        }
+    }
+
+    #[inline]
+    fn u8_to_hex(&self, b: u8) -> [u8; 2] {
+        if self.options.uppercase {
+            b.to_hex_upper()
+        } else {
+            b.to_hex_lower()
+        }
+    }
+
+    fn write_row_index(&mut self, row_index: usize) {
+        let bytes = &row_index.to_be_bytes();
+        let bl = bytes.len();
+
+        let slice = self.line_iterator.reader
+            .total_byte_hint()
+            .map(|h| (h.hex_visual_width() + 1) / 2)
+            .map(|h| max(h, 4))
+            .map(|h| &bytes[(bl - h)..]).unwrap_or(bytes);
+
+        for b in slice {
+            let [high, low] = self.u8_to_hex(*b);
+            self.str_buffer.push(high);
+            self.str_buffer.push(low);
+        }
+        self.str_buffer.extend_from_slice(b"    ");
+    }
+
+    fn write_elision(&mut self) {
+        self.str_buffer.extend_from_slice(b" -- snip --");
+    }
+
+    fn write_row_bytes(&mut self, row: &RowBuffer) {
+        for i in 0..self.options.elt_width() {
+            let [high, low] = match self.read_row_byte_aligned(row, i) {
+                Some(b) => self.u8_to_hex(b),
+                None => [b' ', b' ']
+            };
+            self.str_buffer.push(high);
+            self.str_buffer.push(low);
+            self.str_buffer.extend_from_slice(self.options.grouping.spacing_for_index(i).as_spaces());
+        }
+    }
+
+    #[inline]
+    fn read_row_byte_aligned(&self, row: &RowBuffer, i: usize) -> Option<u8> {
+        if self.options.align && row.is_right_aligned() {
+            if i < row.elt_index || i >= row.buffer.len + row.elt_index {
+                None
+            } else {
+                Some(row.buffer.as_slice()[i - row.elt_index])
+            } 
+        } else {
+            if i < row.buffer.len {
+                Some(row.buffer.as_slice()[i])
+            } else {
+                None
+            }
+        }
+    }
+
+    fn write_row_ascii(&mut self, row: &RowBuffer) {
+        self.str_buffer.push(b'|');
+        for i in 0..self.options.elt_width() {
+            let b = self.read_row_byte_aligned(row, i).unwrap_or(b' ');
+            self.str_buffer.push(if Self::is_printable_char(b as char) { b } else { b'.' });
+        }
+        self.str_buffer.push(b'|');
+    }
+        
+    #[inline]
+    fn is_printable_char(ch: char) -> bool {
+        ch.is_ascii_alphanumeric() || ch.is_ascii_punctuation() || ch == ' '
+    }
+
+    pub fn flush(&mut self) {
+        if self.str_buffer.len > 0 {
+            self.str_buffer.push(b'\n');
+        }
+        let s = self.str_buffer.as_str();
+        self.writer.write_hexdump_str(s).unwrap();
+        self.str_buffer.clear();
     }
 }
