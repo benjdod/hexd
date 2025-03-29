@@ -1,8 +1,10 @@
 use std::{cmp::min, env::set_current_dir, fmt::{Arguments, Debug}, fs, io::{BufRead, Write}, ops::{Bound, Deref, Range, RangeBounds}, str};
 
-use hexdump::{hexdump_into_rr, ByteSliceReader, HexdumpIoWriter, HexdumpLineIterator, HexdumpLineWriter, HexdumpOptions, HexdumpRange, MyByteReader, SliceGroupedByteReader, SliceGroupedReader, WriteHexdump};
+use hexdump::{AsHexdump, ByteSliceReader, HexdumpIoWriter, HexdumpLineIterator, HexdumpLineWriter, HexdumpOptions, HexdumpRange, MyByteReader, SliceGroupedByteReader, SliceGroupedReader, WriteHexdump};
 
 mod hexdump;
+#[cfg(test)]
+mod test;
 
 fn vec_000() -> Vec<u8> {
     let mut o: Vec<u8> = vec![0u8; 17];
@@ -40,32 +42,35 @@ fn vec_inc() -> Vec<u8> {
     o
 }
 
-fn dump_this(slice: &[u8]) {
-    // let mut sg = SliceGroupedByteReader::new(slice, hexdump::Endianness::BigEndian);
-    let mut sg = ByteSliceReader::new(slice);
-    let mut writer = HexdumpIoWriter(std::io::stdout());
-    hexdump_into_rr::<_, _, 4096>(
-        &mut writer, 
-        &mut sg, HexdumpOptions {
-            omit_equal_rows: true,
-            print_range: HexdumpRange::new(0xc00..),
-            grouping: hexdump::Grouping::Grouped { group_size: hexdump::GroupSize::Int, num_groups: 4, byte_spacing: hexdump::Spacing::None, group_spacing: hexdump::Spacing::Normal},
-            ..Default::default()
-        }).unwrap();
-}
-
 fn dump_this_with_hli(slice: &[u8]) {
     let mut writer = HexdumpIoWriter(std::io::stdout());
 
-    let mut hww = HexdumpLineWriter::new(ByteSliceReader::new(slice), writer, HexdumpOptions {
-        print_range: HexdumpRange::new(..),
+    let options = HexdumpOptions {
+        print_range: HexdumpRange::new(17..),
         omit_equal_rows: true,
         uppercase: false,
         align: false,
-        grouping: hexdump::Grouping::Grouped { group_size: hexdump::GroupSize::Int, num_groups: 4, byte_spacing: hexdump::Spacing::None, group_spacing: hexdump::Spacing::Wide },
+        grouping: hexdump::Grouping::Grouped { group_size: hexdump::GroupSize::Short, num_groups: 8, byte_spacing: hexdump::Spacing::None, group_spacing: hexdump::Spacing::Normal },
         ..Default::default()
-    });
+    };
 
+    let aligned = HexdumpOptions {
+        align: true,
+        ..options
+    };
+
+    let unaligned = HexdumpOptions {
+        align: false,
+        ..options
+    };
+
+    let mut hww = HexdumpLineWriter::new(ByteSliceReader::new(slice), writer, aligned);
+    hww.do_hexdump();
+    println!("");
+    println!("");
+    println!("");
+    println!("");
+    let mut hww = HexdumpLineWriter::new(ByteSliceReader::new(slice), HexdumpIoWriter(std::io::stdout()), unaligned);
     hww.do_hexdump();
 }
 
@@ -77,7 +82,9 @@ fn dump_this_with_hli(slice: &[u8]) {
 
 fn main() {
     // println!("{:#x}", usize::MAX);
-    dump_this_with_hli(&&vec_inc());
+    // dump_this_with_hli(&vec_main_rs());
+    vec_main_rs().as_hexdump_opts(());
+    vec_000().hexdump();
     // dbg!(usize::BITS);
     // f.extend_from_slice(&[0xaabb88ffu32; 20]);
 

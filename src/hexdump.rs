@@ -22,7 +22,7 @@ impl<W> WriteHexdump for HexdumpFmtWriter<W> where W: std::fmt::Write {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct HexdumpRange {
     pub skip: usize,
     pub limit: Option<usize>
@@ -167,41 +167,8 @@ impl Default for HexdumpOptions {
 }
 
 impl HexdumpOptions {
-    fn row_width(&self) -> usize {
-        match self.grouping {
-            Grouping::Ungrouped { byte_count, spacing } => {
-                (byte_count * 2) + (spacing.visual_width() * (byte_count - 1))
-            }
-            Grouping::Grouped { group_size, num_groups, byte_spacing, group_spacing } => {
-                let m = group_size.element_count();
-                let single_group_width = (2 * m) + (byte_spacing.visual_width() * (m - 1));
-                let gg = (single_group_width * num_groups) + (group_spacing.visual_width() * (num_groups - 1));
-                gg
-            }
-        }
-    }
-
     fn elt_width(&self) -> usize {
         self.grouping.elt_width()
-    }
-
-    fn spacing_for_element_index(&self, idx: usize) -> Spacing {
-        match self.grouping {
-            Grouping::Ungrouped { byte_count: _, spacing } => spacing,
-            Grouping::Grouped { group_size, num_groups: _, byte_spacing, group_spacing } => {
-                match group_size {
-                    GroupSize::Byte => group_spacing,
-                    gs => {
-                        let s = gs.element_count();
-                        if idx % s == s - 1 {
-                            group_spacing
-                        } else {
-                            byte_spacing
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -242,33 +209,6 @@ impl HexVisualWidth for usize {
         }
         i
     }
-}
-
-fn number_to_hex<T: BitAnd<usize, Output = T> + Shr<T, Output = T> + Copy + TryInto<u8> + From<u8>>(n: T, o: &mut [u8], is_upper: bool) where <T as TryInto<u8>>::Error: Debug {
-    let shr: T = 4.into();
-    let mut nn = n;
-    for i in 0..o.len() {
-        let i = o.len() - 1 - i;
-        let idx = nn & 0xf;
-        let f: u8 = idx.try_into().unwrap();
-        let b = if f > 0 {
-            if is_upper { UPPER_LUT[f as usize] } else { LOWER_LUT[f as usize] }
-        } else {
-            UPPER_LUT[0]
-        };
-
-        o[i] = b;
-        nn = nn >> shr;
-    }
-}
-
-#[derive(Debug)]
-enum ElideSearch {
-    Byte([u8; 1]),
-    Short([u8; 2]),
-    Int([u8; 4]),
-    Long([u8; 8]),
-    ULong([u8; 16])
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -329,316 +269,6 @@ impl<const N: usize> AsRef<[u8]> for StackBuffer<N> {
     fn as_ref(&self) -> &[u8] {
         &self.buffer[..self.len]
     }
-}
-
-impl ElideSearch {
-    fn as_slice<'a>(&'a self) -> &'a [u8] {
-        match self {
-            Self::Byte(b) => b,
-            Self::Short(b) => b,
-            Self::Int(b) => b,
-            Self::Long(b) => b,
-            Self::ULong(b) => b
-        }
-    }
-
-    fn into_stack_buffer<const N: usize>(&self, options: &HexdumpOptions) -> StackBuffer::<N> {
-        let mut o = StackBuffer::<N>::new();
-        while o.len < options.elt_width() {
-            o.extend_from_slice(self.as_slice());
-        }
-        o
-    }
-}
-
-enum RowBuf<'a> {
-    Full(&'a [u8]),
-    Left(&'a [u8]),
-    Right(&'a [u8])
-}
-
-impl<'a> RowBuf<'a> {
-    fn as_slice(&'a self) -> &'a [u8] {
-        match self {
-            &Self::Full(f) => f,
-            &Self::Left(f) => f,
-            &Self::Right(f) => f
-        }
-    }
-    fn len(&self) -> usize {
-        self.as_slice().len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.as_slice().len() == 0
-    }
-
-    fn is_full(&self) -> bool {
-        match self {
-            &Self::Full(_) => true,
-            _ => false
-        }
-    }
-}
-
-#[inline]
-fn truncate_byte_index(byte_index: usize, options: &HexdumpOptions) -> usize {
-    (byte_index / options.elt_width()) * options.elt_width()
-}
-
-#[inline]
-fn hexwidth_of(u: usize) -> usize {
-    let mut u = u;
-    let mut i = 0usize;
-    while u > 0 {
-        u >>= 4;
-        i += 1;
-    }
-    i
-}
-
-pub fn hexdump_into_rr<
-    W: WriteHexdump, 
-    Reader: MyByteReader,
-    const N: usize
->(w: &mut W, reader: &mut Reader, options: HexdumpOptions) -> Result<(), W::Error> {
-    let start = options.print_range.skip;
-    let end = options.print_range.limit;
-
-    let aligned_index_into = |c: &RowBuf, i: usize| {
-        match c {
-            &RowBuf::Full(b) => Some(b[i]),
-            &RowBuf::Left(b) => if i < b.len() { Some(b[i]) } else { None },
-            &RowBuf::Right(b) => {
-                if i < (options.elt_width() - b.len()) {
-                    None
-                } else {
-                    Some(b[i - (options.elt_width() - b.len())])
-                }
-            }
-        }
-    };
-
-    let write_row = |buffer: &mut StackBuffer<N>, c: &RowBuf| {
-        for i in 0..options.elt_width() {
-            let ch = aligned_index_into(c, i);
-
-            let [hi, lo] = match ch {
-                Some(ch) => if options.uppercase { ch.to_hex_upper() } else { ch.to_hex_lower() },
-                None => [b' ', b' ']
-            };
-            buffer.push(hi);
-            buffer.push(lo);
-            buffer.extend_from_slice(options.spacing_for_element_index(i).as_spaces());
-        }
-    };
-
-    let index_max_hexwidth = max(8, hexwidth_of(reader.total_byte_hint().unwrap_or(0)));
-
-    let write_row_idx = |buffer: &mut StackBuffer<N>, idx: Option<usize>| {
-        match idx {
-            Some(i) => {
-                let i = match options.index_offset {
-                    IndexOffset::Relative(o) => i + o,
-                    IndexOffset::Absolute(o) => i - start + o
-                };
-                let mut oo = [0u8; 32];
-                let o = &mut oo.as_mut_slice()[..index_max_hexwidth];
-                number_to_hex(i, o, false);
-                buffer.extend_from_slice(o);
-                buffer.extend_from_slice(b"    ")
-            }
-            None => {
-                buffer.extend_from_slice(b" --snip--     ")// 
-            }
-        }
-    };
-
-    let is_printable = |ch:char| {
-        ch.is_ascii_alphanumeric() || ch.is_ascii_punctuation() || ch == ' '
-    };
-
-    let write_row_ascii = |buffer: &mut StackBuffer<N>, c: &RowBuf| {
-        let mut v = StackBuffer::<128>::new();
-        v.push(b'|');
-        for i in 0..options.elt_width() {
-            v.push(match aligned_index_into(c, i) {
-                Some(ch) => if is_printable(ch as char) { ch } else { b'.' },
-                None => b' '
-            });
-        }
-        v.push(b'|');
-        buffer.extend_from_slice(v.as_slice());
-    };
-
-    let mut bytebuf = StackBuffer::<256>::new();
-
-    let mut i = start;
-
-    if start > 0 {
-        reader.skip_n(start).unwrap();
-    }
-
-    let mut elide_search: Option<(usize, ElideSearch)> = None;
-
-    let slice_equals_elision = |s: &RowBuf, search: &ElideSearch| {
-        s.is_full() && match search {
-            ElideSearch::Byte(c) => s.as_slice().iter().all(|b| *b == c[0]),
-            c => {
-                let c = c.as_slice();
-                for (i, b) in s.as_slice().iter().enumerate() {
-                    if c[i % c.len()] != *b { return false; }
-                }
-                true
-            }
-        }
-    };
-
-    let terminate_elision = |sb: &mut StackBuffer<N>, search: (usize, &ElideSearch), byte_index: usize| {
-        let (elide_start, search) = search;
-        let cc = search.into_stack_buffer::<256>(&options);
-        let xx = RowBuf::Full(cc.as_slice());
-
-        // Write "snip"
-        if byte_index - elide_start >= options.elt_width() * 3 {
-            write_row_idx(sb, None);
-            sb.push(b'\n');
-        }
-
-        write_row_idx(sb, Some(byte_index - options.elt_width()));
-        write_row(sb, &xx);
-        if options.print_ascii {
-            sb.push(b' ');
-            write_row_ascii(sb, &xx);
-        }
-        sb.push(b'\n');
-    };
-
-    let mut sb = StackBuffer::<N>::new();
-
-    loop {
-        sb.clear();
-        if let Some(end_at) = end {
-            if i >= end_at {
-                if let Some((elide_start, search)) = elide_search {
-                    terminate_elision(&mut sb, (elide_start, &search), truncate_byte_index(end_at, &options));
-                    w.write_hexdump_str(sb.as_str()).unwrap();
-                }
-                break;
-            }
-        }
-        let x = if !options.align || i % options.elt_width() == 0 {
-            let take = end
-                .map(|end_at| if i <= end_at { min(end_at - i, options.elt_width()) } else { 0 })
-                .unwrap_or(options.elt_width());
-            let bb = reader.next_n(&mut bytebuf.as_mut_slice()[0..take]).unwrap();
-
-            if bb.len() == options.elt_width() {
-                RowBuf::Full(&bb)
-            } else {
-                RowBuf::Left(&bb)
-            }
-        } else {
-            let bb = reader.next_n(&mut bytebuf.as_mut_slice()[i % options.elt_width() .. options.elt_width()]).unwrap();
-
-            if bb.len() > 0 {
-                RowBuf::Right(bb)
-            } else {
-                RowBuf::Full(bb)
-            }
-        };
-
-        let byte_index = truncate_byte_index(i, &options);
-
-        if x.is_empty() { 
-            if let Some((elide_start, search)) = elide_search {
-                terminate_elision(&mut sb, (elide_start, &search), byte_index);
-                w.write_hexdump_str(sb.as_str()).unwrap();
-            }
-            break; 
-        }
-
-        if options.omit_equal_rows {
-            match &elide_search {
-                Some((elide_start, search)) => {
-                    match slice_equals_elision(&x, search) {
-                        true => {
-                            i += x.len();
-                            continue;
-                        },
-                        false if !x.is_full() => { }
-                        false => {
-                            terminate_elision(&mut sb, (*elide_start, search), byte_index);
-                            // let cc = search.into_stack_buffer::<256>(&options);
-                            // let xx = RowBuf::Full(cc.as_slice());
-
-                            // if byte_index - elide_start >= options.elt_width() * 3 {
-                            //     write_row_idx(&mut sb, None);
-                            //     sb.push(b'\n');
-                            // }
-
-                            // write_row_idx(&mut sb, Some(byte_index - options.elt_width()));
-                            // write_row(&mut sb, &xx);
-                            // if options.print_ascii {
-                            //     sb.push(b' ');
-                            //     write_row_ascii(&mut sb, &xx);
-                            // }
-                            // sb.push(b'\n');
-                            elide_search = None;
-                        }
-                    }
-                }
-                None => {
-                    let current_elide_search = match options.grouping {
-                        Grouping::Ungrouped { byte_count , spacing } if x.is_full() => {
-                            let search_char = x.as_slice().get(0);
-                            if x.as_slice().iter().all(|ch| *ch == *search_char.unwrap()) {
-                                Some((byte_index, ElideSearch::Byte([x.as_slice()[0]])))
-                            } else {
-                                None
-                            }
-                        }
-                        Grouping::Grouped { group_size, num_groups, byte_spacing, group_spacing } if x.is_full() => {
-                            let search_slice = &x.as_slice()[..group_size.element_count()];
-                            let all_eq = x.as_slice().chunks(search_slice.len()).skip(1).all(|s| s == search_slice);
-                            if all_eq {
-                                Some((byte_index, match search_slice.len() {
-                                    1 => ElideSearch::Byte(<[u8; 1]>::try_from(search_slice).unwrap()),
-                                    2 => ElideSearch::Short(<[u8; 2]>::try_from(search_slice).unwrap()),
-                                    4 => ElideSearch::Int(<[u8; 4]>::try_from(search_slice).unwrap()),
-                                    8 => ElideSearch::Long(<[u8; 8]>::try_from(search_slice).unwrap()),
-                                    16 => ElideSearch::ULong(<[u8; 16]>::try_from(search_slice).unwrap()),
-                                    _ => unreachable!()
-                                }))
-                            } else {
-                                None
-                            }
-                        },
-                        _ => None
-                    };
-
-                    match current_elide_search {
-                        Some(es) => { elide_search = Some(es); }
-                        None => { }
-                    }
-                }
-            };
-        }
-
-        write_row_idx(&mut sb, Some(byte_index));
-        write_row(&mut sb, &x);
-        if options.print_ascii {
-            sb.push(b' ');
-            write_row_ascii(&mut sb, &x);
-        }
-        sb.push(b'\n');
-
-        w.write_hexdump_str(sb.as_str()).unwrap();
-
-        i += x.len();
-    }
-
-    return Ok(());
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -895,7 +525,22 @@ impl<'a, const N: usize, U: EndianBytes<N>> GroupedReader<N> for SliceGroupedRea
 pub trait MyByteReader {
     type Error: Debug;
     fn next_n<'buf>(&mut self, buf: &'buf mut[u8]) -> Result<&'buf [u8], Self::Error>;
-    fn skip_n(&mut self, n: usize) -> Result<usize, Self::Error>;
+
+    fn skip_n(&mut self, n: usize) -> Result<usize, Self::Error> {
+        const SKIP_LEN: usize = 64usize;
+        let mut skipbuf = [0u8; SKIP_LEN];
+        let mut i = 0usize;
+        while i < n {
+            let skipbuf = &mut skipbuf[..min(n - i, SKIP_LEN)];
+            let b = self.next_n(skipbuf)?;
+            if b.len() == 0 {
+                return Ok(i);
+            }
+            i += b.len();
+        }
+        Ok(n)
+
+    }
     fn total_byte_hint(&self) -> Option<usize> {
         None
     }
@@ -989,7 +634,7 @@ impl ElisionMatch {
                     None
                 }
             },
-            Grouping::Grouped { group_size, num_groups, byte_spacing, group_spacing } => {
+            Grouping::Grouped { group_size, num_groups: _, byte_spacing: _, group_spacing: _ } => {
                 let group_size = group_size.element_count();
                 let s = &buffer.as_slice()[..group_size];
                 if s.chunks(group_size).all(|chunk| { 
@@ -1069,19 +714,15 @@ impl<R: MyByteReader> Iterator for HexdumpLineIterator<R> {
 
                 let rowbuffer = self.read_into_buffer(read_len);
                 if self.options.omit_equal_rows {
-                    match &self.elision_match {
-                        Some(em) => {
-                            if em.matches(&rowbuffer, &self.options) {
-                                return Some(LineIteratorResult::Elided(rowbuffer))
-                            } else {
-                                self.elision_match = None;
-                            }
-                        },
-                        None => {
-                            if let Some(elision_match) = ElisionMatch::try_match(&rowbuffer, &self.options)  {
-                                self.elision_match = Some(elision_match);
-                            }
+                    if let Some(em) = &self.elision_match {
+                        if em.matches(&rowbuffer, &self.options) {
+                            return Some(LineIteratorResult::Elided(rowbuffer))
+                        } else {
+                            self.elision_match = None;
                         }
+                    }
+                    if let Some(elision_match) = ElisionMatch::try_match(&rowbuffer, &self.options)  {
+                        self.elision_match = Some(elision_match);
                     }
                 }
                 if rowbuffer.length > 0 {
@@ -1166,11 +807,11 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
             self.str_buffer.push(high);
             self.str_buffer.push(low);
         }
-        self.str_buffer.extend_from_slice(b"    ");
+        self.str_buffer.extend_from_slice(b": ");
     }
 
     fn write_elision(&mut self) {
-        self.str_buffer.extend_from_slice(b" -- snip --");
+        self.str_buffer.extend_from_slice(b"* ");
     }
 
     fn write_row_bytes(&mut self, row: &RowBuffer) {
@@ -1187,11 +828,12 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
 
     #[inline]
     fn read_row_byte_aligned(&self, row: &RowBuffer, i: usize) -> Option<u8> {
+        let ee = row.elt_index % self.options.elt_width();
         if self.options.align && row.is_right_aligned() {
-            if i < row.elt_index || i >= row.buffer.len + row.elt_index {
+            if i < ee || i >= row.buffer.len + ee {
                 None
             } else {
-                Some(row.buffer.as_slice()[i - row.elt_index])
+                Some(row.buffer.as_slice()[i - ee])
             } 
         } else {
             if i < row.buffer.len {
@@ -1203,6 +845,7 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
     }
 
     fn write_row_ascii(&mut self, row: &RowBuffer) {
+        self.str_buffer.push(b' ');
         self.str_buffer.push(b'|');
         for i in 0..self.options.elt_width() {
             let b = self.read_row_byte_aligned(row, i).unwrap_or(b' ');
@@ -1216,12 +859,68 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
         ch.is_ascii_alphanumeric() || ch.is_ascii_punctuation() || ch == ' '
     }
 
-    pub fn flush(&mut self) {
+    fn flush(&mut self) {
         if self.str_buffer.len > 0 {
             self.str_buffer.push(b'\n');
         }
         let s = self.str_buffer.as_str();
         self.writer.write_hexdump_str(s).unwrap();
         self.str_buffer.clear();
+    }
+
+    pub fn consume(self) -> W {
+        self.writer
+    }
+}
+
+pub struct HexdumpRef<R: MyByteReader> {
+    reader: R,
+    options: HexdumpOptions
+}
+
+pub trait AsHexdump<'a, R: MyByteReader> {
+    fn as_hexdump_opts<O: Into<HexdumpOptions>>(&'a self, options: O) -> HexdumpRef<R>;
+
+    fn as_hexdump(&'a self) -> HexdumpRef<R> {
+        self.as_hexdump_opts(HexdumpOptions::default())
+    }
+
+    fn hexdump(&'a self) {
+        self.hexdump_into(HexdumpIoWriter(std::io::stdout()));
+    }
+
+    fn hexdump_string(&'a self) -> String {
+        self.hexdump_into(HexdumpFmtWriter(String::new())).0
+    }
+
+    fn hexdump_into<W: WriteHexdump + Sized>(&'a self, writer: W) -> W {
+        let h = self.as_hexdump();
+        let mut hlw = HexdumpLineWriter::new(h.reader, writer, h.options);
+        hlw.do_hexdump();
+        hlw.consume()
+    }
+}
+
+impl<'a, T: AsRef<[u8]>> AsHexdump<'a, ByteSliceReader<'a>> for T {
+    fn as_hexdump_opts<O: Into<HexdumpOptions>>(&'a self, options: O) -> HexdumpRef<ByteSliceReader<'a>> {
+        let slice = self.as_ref();
+        let reader = ByteSliceReader::new(slice);
+        HexdumpRef { reader, options: options.into() }
+    }
+}
+
+// impl<R: RangeBounds<usize>> From<R> for HexdumpOptions {
+//     fn from(value: R) -> Self {
+//         let print_range = HexdumpRange::new(value);
+//         HexdumpOptions {
+//             print_range,
+//             ..Default::default()
+//         }
+//     }
+// }
+
+impl From<()> for HexdumpOptions {
+    fn from(_: ()) -> Self {
+        HexdumpOptions::default()
     }
 }
