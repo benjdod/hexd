@@ -3,17 +3,33 @@ use std::{cmp::{max, min}, fmt::Debug, convert::Infallible, io::{Stderr, Stdout,
 pub trait WriteHexdump: Sized {
     type Error: Debug;
     type Output;
-    fn write_hexdump_str(&mut self, s: &str) -> Result<(), Self::Error>;
+    fn write_line(&mut self, s: &str) -> Result<(), Self::Error>;
     fn flush(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
     fn consume(r: Result<Self, Self::Error>) -> Self::Output;
 }
 
+struct IOWriter<W: std::io::Write>(W);
+
+impl<W: std::io::Write> WriteHexdump for IOWriter<W> {
+    type Error = std::io::Error;
+    type Output = Result<(), std::io::Error>;
+    fn write_line(&mut self, s: &str) -> Result<(), Self::Error> {
+        self.0.write_all(s.as_bytes())
+    }
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.0.flush()
+    }
+    fn consume(r: Result<Self, Self::Error>) -> Self::Output {
+        r.map(|_| ())
+    }
+}
+
 impl WriteHexdump for Stdout {
     type Error = std::io::Error;
     type Output = ();
-    fn write_hexdump_str(&mut self, s: &str) -> Result<(), std::io::Error> {
+    fn write_line(&mut self, s: &str) -> Result<(), std::io::Error> {
         self.write_all(s.as_bytes())
     }
     fn flush(&mut self) -> Result<(), Self::Error> {
@@ -28,7 +44,7 @@ impl WriteHexdump for Stdout {
 impl WriteHexdump for Stderr {
     type Error = std::io::Error;
     type Output = ();
-    fn write_hexdump_str(&mut self, s: &str) -> Result<(), std::io::Error> {
+    fn write_line(&mut self, s: &str) -> Result<(), std::io::Error> {
         self.write_all(s.as_bytes())
     }
     fn flush(&mut self) -> Result<(), Self::Error> {
@@ -43,7 +59,7 @@ impl WriteHexdump for Stderr {
 impl WriteHexdump for String {
     type Error = Infallible;
     type Output = String;
-    fn write_hexdump_str(&mut self, s: &str) -> Result<(), Self::Error> {
+    fn write_line(&mut self, s: &str) -> Result<(), Self::Error> {
         self.push_str(s);
         Ok(())
     }
@@ -55,7 +71,7 @@ impl WriteHexdump for String {
 impl WriteHexdump for Vec<String> {
     type Error = Infallible;
     type Output = Vec<String>;
-    fn write_hexdump_str(&mut self, s: &str) -> Result<(), Self::Error> {
+    fn write_line(&mut self, s: &str) -> Result<(), Self::Error> {
         self.push(s.to_string());
         Ok(())
     }
@@ -987,7 +1003,12 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
         let ll = match r {
             Ok(_) => Ok(self.writer),
             Err(e) => Err(e)
-        };
+        }.and_then(|mut w| {
+            match w.flush() {
+                Ok(_) => Ok(w),
+                Err(e) => Err(e)
+            }
+        });
         WriteHexdump::consume(ll)
     }
 
@@ -1140,8 +1161,7 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
             self.str_buffer.push(b'\n');
         }
         let s = self.str_buffer.as_str();
-        self.writer.write_hexdump_str(s)?;
-        self.writer.flush()?;
+        self.writer.write_line(s)?;
         self.str_buffer.clear();
         Ok(())
     }
@@ -1160,6 +1180,11 @@ impl<R: MyByteReader> Hexd<R> {
 
     pub fn dump_to<W: WriteHexdump>(self, writer: W) -> W::Output {
         let hlw = HexdumpLineWriter::new(self.reader, writer, self.options);
+        hlw.do_hexdump()
+    }
+
+    pub fn dump_io<W: Write>(self, write: W) -> Result<(), std::io::Error> {
+        let hlw = HexdumpLineWriter::new(self.reader, IOWriter(write), self.options);
         hlw.do_hexdump()
     }
 
