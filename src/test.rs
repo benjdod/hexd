@@ -1,6 +1,10 @@
 use indoc::indoc;
 
-use crate::hexdump::{DoHexdum, GroupedOptions, Grouping, HexdumpOptions, HexdumpOptionsBuilder, HexdumpRange, IndexOffset, ToHexdump};
+use crate::hexdump::{AsHexd, GroupedOptions, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, ToHexd};
+
+fn usage() {
+    let x = vec![0u8; 32];
+}
 
 fn test_range_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()> {
     // Given
@@ -11,7 +15,7 @@ fn test_range_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()
     } = test;
 
     // When
-    let dump = input.to_hexdump().with_options(options).hexdump_to_string();
+    let dump = input.to_hexd().with_options(options).dump::<String>();
 
     // Then
     similar_asserts::assert_eq!(output, &dump, "hexdump output did not equal expected value");
@@ -21,7 +25,7 @@ fn test_range_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()
 struct RenderTestCase<T> {
     input: T,
     output: &'static str,
-    options: HexdumpOptions
+    options: HexdOptions
 }
 
 pub struct ByteSequence {
@@ -68,20 +72,20 @@ macro_rules! byte_tests {
     };
 }
 
-fn default_test_options() -> HexdumpOptions {
-    let default_options = HexdumpOptions {
+fn default_test_options() -> HexdOptions {
+    let default_options = HexdOptions {
         autoskip: true,
         uppercase: true,
         print_ascii: true,
         align: true,
         grouping: Grouping::Grouped(GroupedOptions::default()),
-        print_range: HexdumpRange { skip: 0, limit: None },
+        print_range: HexdRange { skip: 0, limit: None },
         index_offset: IndexOffset::Relative(0)
     };
     default_options
 }
 
-fn elision_test_options() -> HexdumpOptions {
+fn elision_test_options() -> HexdOptions {
     default_test_options()
         .grouped(crate::hexdump::GroupSize::Short, 2, crate::hexdump::Spacing::None, crate::hexdump::Spacing::Normal)
 }

@@ -1,35 +1,76 @@
-use core::num;
-use std::{char::MAX, cmp::{max, min}, convert::Infallible, f32::consts::LN_10, fmt::Debug, iter::Peekable, ops::{Add, BitAnd, Bound, Div, Mul, RangeBounds, Shr}, process::Output, sync::Arc};
+use std::{cmp::{max, min}, fmt::Debug, convert::Infallible, io::{Stderr, Stdout, Write}, ops::{Bound, Div, Mul, RangeBounds}};
 
-pub struct HexdumpIoWriter<W>(pub W) where W: std::io::Write;
-pub struct HexdumpFmtWriter<W>(pub W) where W: std::fmt::Write;
-
-pub trait WriteHexdump {
+pub trait WriteHexdump: Sized {
     type Error: Debug;
+    type Output;
     fn write_hexdump_str(&mut self, s: &str) -> Result<(), Self::Error>;
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn consume(r: Result<Self, Self::Error>) -> Self::Output;
 }
 
-impl<W> WriteHexdump for HexdumpIoWriter<W> where W: std::io::Write {
+impl WriteHexdump for Stdout {
     type Error = std::io::Error;
+    type Output = ();
     fn write_hexdump_str(&mut self, s: &str) -> Result<(), std::io::Error> {
-        self.0.write_all(s.as_bytes())
+        self.write_all(s.as_bytes())
+    }
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        std::io::Write::flush(self)
+    }
+    fn consume(r: Result<Self, Self::Error>) -> Self::Output {
+        r.unwrap();
+        ()
     }
 }
 
-impl<W> WriteHexdump for HexdumpFmtWriter<W> where W: std::fmt::Write {
-    type Error = std::fmt::Error;
+impl WriteHexdump for Stderr {
+    type Error = std::io::Error;
+    type Output = ();
+    fn write_hexdump_str(&mut self, s: &str) -> Result<(), std::io::Error> {
+        self.write_all(s.as_bytes())
+    }
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        std::io::Write::flush(self)
+    }
+    fn consume(r: Result<Self, Self::Error>) -> Self::Output {
+        r.unwrap();
+        ()
+    }
+}
+
+impl WriteHexdump for String {
+    type Error = Infallible;
+    type Output = String;
     fn write_hexdump_str(&mut self, s: &str) -> Result<(), Self::Error> {
-        self.0.write_str(s)
+        self.push_str(s);
+        Ok(())
+    }
+    fn consume(r: Result<Self, Self::Error>) -> Self::Output {
+        r.unwrap()
+    }
+}
+
+impl WriteHexdump for Vec<String> {
+    type Error = Infallible;
+    type Output = Vec<String>;
+    fn write_hexdump_str(&mut self, s: &str) -> Result<(), Self::Error> {
+        self.push(s.to_string());
+        Ok(())
+    }
+    fn consume(r: Result<Self, Self::Error>) -> Self::Output {
+        r.unwrap()
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct HexdumpRange {
+pub struct HexdRange {
     pub skip: usize,
     pub limit: Option<usize>
 }
 
-impl HexdumpRange {
+impl HexdRange {
     pub fn new<R: RangeBounds<usize>>(r: R) -> Self {
         let skip = match r.start_bound() {
             Bound::Unbounded => 0usize,
@@ -51,13 +92,13 @@ impl HexdumpRange {
 }
 
 #[derive(Debug, Clone)]
-pub struct HexdumpOptions {
+pub struct HexdOptions {
     pub autoskip: bool,
     pub uppercase: bool,
     pub print_ascii: bool,
     pub align: bool,
     pub grouping: Grouping,
-    pub print_range: HexdumpRange,
+    pub print_range: HexdRange,
     pub index_offset: IndexOffset
 }
 
@@ -113,8 +154,6 @@ pub enum Grouping {
     Grouped(GroupedOptions)
 }
 
-pub struct GroupingBuilder(GroupSize, Spacing);
-
 impl Grouping {
     pub fn elt_width(&self) -> usize {
         match self {
@@ -159,9 +198,16 @@ impl GroupSize {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Spacing {
+    /// No spacing is included between elements.
     None,
+
+    /// A single space is included between elements.
     Normal,
+
+    /// Two spaces are included between elements.
     Wide,
+
+    /// Four spaces are included between elements.
     UltraWide
 }
 
@@ -176,7 +222,7 @@ impl Spacing {
     }
 }
 
-impl Default for HexdumpOptions {
+impl Default for HexdOptions {
     fn default() -> Self {
         Self {
             autoskip: true,
@@ -184,26 +230,26 @@ impl Default for HexdumpOptions {
             print_ascii: true,
             align: true,
             grouping: Grouping::Grouped(GroupedOptions::default()),
-            print_range: HexdumpRange { skip: 0, limit: None },
+            print_range: HexdRange { skip: 0, limit: None },
             index_offset: IndexOffset::Relative(0)
         }
     }
 }
 
-pub trait HexdumpOptionsBuilder: Sized {
-    fn as_options<'a>(&'a self) -> &'a HexdumpOptions;
-    fn with_options(self, o: HexdumpOptions) -> Self;
+pub trait HexdOptionsBuilder: Sized {
+    fn as_options<'a>(&'a self) -> &'a HexdOptions;
+    fn with_options(self, o: HexdOptions) -> Self;
     fn range<R: RangeBounds<usize>>(self, range: R) -> Self {
         let o = self.as_options();
-        let opts = HexdumpOptions {
-            print_range: HexdumpRange::new(range),
+        let opts = HexdOptions {
+            print_range: HexdRange::new(range),
             ..o.clone()
         };
         self.with_options(opts)
     }
     fn aligned(self, align: bool) -> Self {
         let o = self.as_options();
-        let options = HexdumpOptions {
+        let options = HexdOptions {
             align,
             ..o.clone()
         };
@@ -211,7 +257,7 @@ pub trait HexdumpOptionsBuilder: Sized {
     }
     fn uppercase(self, uppercase: bool) -> Self {
         let o = self.as_options();
-        let options = HexdumpOptions {
+        let options = HexdOptions {
             uppercase,
             ..o.clone()
         };
@@ -219,7 +265,7 @@ pub trait HexdumpOptionsBuilder: Sized {
     }
     fn grouping(self, grouping: Grouping) -> Self {
         let o = self.as_options();
-        let options = HexdumpOptions {
+        let options = HexdOptions {
             grouping,
             ..o.clone()
         };
@@ -228,7 +274,7 @@ pub trait HexdumpOptionsBuilder: Sized {
     fn ungrouped(self, num_bytes: usize, spacing: Spacing) -> Self {
         let o = self.as_options();
         let grouping = Grouping::Ungrouped { byte_count: num_bytes, spacing };
-        let options = HexdumpOptions {
+        let options = HexdOptions {
             grouping,
             ..o.clone()
         };
@@ -237,7 +283,7 @@ pub trait HexdumpOptionsBuilder: Sized {
     fn grouped(self, group_size: GroupSize, num_groups: usize, byte_spacing: Spacing, group_spacing: Spacing) -> Self {
         let o = self.as_options();
         let grouping = Grouping::Grouped(GroupedOptions { group_size, num_groups, byte_spacing, group_spacing });
-        let options = HexdumpOptions {
+        let options = HexdOptions {
             grouping,
             ..o.clone()
         };
@@ -245,7 +291,7 @@ pub trait HexdumpOptionsBuilder: Sized {
     }
     fn autoskip(self, autoskip: bool) -> Self {
         let o = self.as_options();
-        let options = HexdumpOptions {
+        let options = HexdOptions {
             autoskip,
             ..o.clone()
         };
@@ -253,7 +299,7 @@ pub trait HexdumpOptionsBuilder: Sized {
     }
     fn relative_offset(self, offset: usize) -> Self {
         let o = self.as_options();
-        let options = HexdumpOptions {
+        let options = HexdOptions {
             index_offset: IndexOffset::Relative(offset),
             ..o.clone()
         };
@@ -261,7 +307,7 @@ pub trait HexdumpOptionsBuilder: Sized {
     }
     fn absolute_offset(self, offset: usize) -> Self {
         let o = self.as_options();
-        let options = HexdumpOptions {
+        let options = HexdOptions {
             index_offset: IndexOffset::Absolute(offset),
             ..o.clone()
         };
@@ -269,16 +315,16 @@ pub trait HexdumpOptionsBuilder: Sized {
     }
 }
 
-impl HexdumpOptionsBuilder for HexdumpOptions {
-    fn as_options<'a>(&'a self) -> &'a HexdumpOptions {
+impl HexdOptionsBuilder for HexdOptions {
+    fn as_options<'a>(&'a self) -> &'a HexdOptions {
         self
     }
-    fn with_options(self, o: HexdumpOptions) -> Self {
+    fn with_options(self, o: HexdOptions) -> Self {
         o
     }
 }
 
-impl HexdumpOptions {
+impl HexdOptions {
     fn elt_width(&self) -> usize {
         self.grouping.elt_width()
     }
@@ -783,7 +829,7 @@ enum HexdumpLineIteratorState {
 struct HexdumpLineIterator<R: MyByteReader> {
     reader: R,
     index: usize,
-    options: HexdumpOptions,
+    options: HexdOptions,
     state: HexdumpLineIteratorState,
     elision_match: Option<ElisionMatch>
 }
@@ -796,7 +842,7 @@ struct ElisionMatch {
 }
 
 impl ElisionMatch {
-    fn try_match(row: &RowBuffer, options: &HexdumpOptions) -> Option<Self> {
+    fn try_match(row: &RowBuffer, options: &HexdOptions) -> Option<Self> {
         let buffer = &row.buffer;
         match options.grouping {
             _ if buffer.len != options.elt_width() => None,
@@ -822,7 +868,7 @@ impl ElisionMatch {
         }
     }
 
-    fn matches(&self, row: &RowBuffer, options: &HexdumpOptions) -> bool {
+    fn matches(&self, row: &RowBuffer, options: &HexdOptions) -> bool {
         if row.buffer.len == options.elt_width() {
             self.buffer == row.buffer
         } else {
@@ -832,7 +878,7 @@ impl ElisionMatch {
 }
 
 impl<'a, R: MyByteReader> HexdumpLineIterator<R> {
-    pub fn new(reader: R, options: HexdumpOptions) -> Self {
+    pub fn new(reader: R, options: HexdOptions) -> Self {
         Self { reader, index: 0, options, state: HexdumpLineIteratorState::NotStarted, elision_match: None }
     }
 
@@ -861,7 +907,7 @@ impl<'a, R: MyByteReader> HexdumpLineIterator<R> {
     }
 }
 
-pub enum LineIteratorResult {
+enum LineIteratorResult {
     Elided(RowBuffer),
     Row(RowBuffer)
 }
@@ -922,21 +968,30 @@ impl<R: MyByteReader> Iterator for HexdumpLineIterator<R> {
     }
 }
 
-pub struct HexdumpLineWriter<R: MyByteReader, W: WriteHexdump> {
+struct HexdumpLineWriter<R: MyByteReader, W: WriteHexdump> {
     line_iterator: HexdumpLineIterator<R>,
     writer: W,
     elided_row: Option<(RowBuffer, usize)>,
     str_buffer: StackBuffer<256>,
-    options: HexdumpOptions
+    options: HexdOptions
 }
 
 impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
-    pub fn new(reader: R, writer: W, options: HexdumpOptions) -> Self {
+    fn new(reader: R, writer: W, options: HexdOptions) -> Self {
         let line_iterator = HexdumpLineIterator::new(reader, options.clone());
         Self { line_iterator, writer, elided_row: None, str_buffer: StackBuffer::<256>::new(), options }
     }
 
-    pub fn do_hexdump(&mut self) {
+    fn do_hexdump(mut self) -> W::Output {
+        let r = self.do_hexdump_internal();
+        let ll = match r {
+            Ok(_) => Ok(self.writer),
+            Err(e) => Err(e)
+        };
+        WriteHexdump::consume(ll)
+    }
+
+    fn do_hexdump_internal(&mut self) -> Result<(), W::Error> {
         let mut i = 0usize;
         while let Some(r) = self.line_iterator.next() {
             match r {
@@ -946,13 +1001,13 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
 
                         if (i - start) > 1 {
                             self.write_elision();
-                            self.flush();
+                            self.flush_line()?;
                         }
 
                         self.write_row_index(r.row_index - self.options.elt_width());
                         self.write_row_bytes(&elided_row);
                         self.write_row_ascii(&elided_row);
-                        self.flush();
+                        self.flush_line()?;
                     }
                     self.elided_row = None;
                     self.write_row_index(r.row_index);
@@ -966,13 +1021,13 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
                 }
             }
 
-            self.flush();
+            self.flush_line()?;
             i += 1;
         }
         if let Some((r, start)) = self.elided_row.clone() {
             if (i - start) > 1 {
                 self.write_elision();
-                self.flush();
+                self.flush_line()?;
             }
 
             let row_index = (i - 1) * self.options.elt_width();
@@ -981,8 +1036,9 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
             self.write_row_index(row_index);
             self.write_row_bytes(&elided_row);
             self.write_row_ascii(&elided_row);
-            self.flush();
-        }
+            self.flush_line()?;
+        };
+        Ok(())
     }
 
     #[inline]
@@ -998,11 +1054,6 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
         let v_index = match self.options.index_offset {
             IndexOffset::Absolute(o) => {
                 row_index - min(row_index, self.options.print_range.skip) + o
-                // if row_index <= self.options.print_range.skip {
-                //     row_index - self.options.print_range.skip + o
-                // } else {
-                //     o
-                // }
             }
             IndexOffset::Relative(o) => row_index + o
         };
@@ -1067,6 +1118,7 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
         }
     }
 
+    #[inline]
     fn write_row_ascii(&mut self, row: &RowBuffer) {
         // self.str_buffer.push(b' ');
         self.str_buffer.push(b'|');
@@ -1082,31 +1134,50 @@ impl<R: MyByteReader, W: WriteHexdump> HexdumpLineWriter<R, W> {
         ch.is_ascii_alphanumeric() || ch.is_ascii_punctuation() || ch == ' '
     }
 
-    fn flush(&mut self) {
+    #[inline]
+    fn flush_line(&mut self) -> Result<(), W::Error> {
         if self.str_buffer.len > 0 {
             self.str_buffer.push(b'\n');
         }
         let s = self.str_buffer.as_str();
-        self.writer.write_hexdump_str(s).unwrap();
+        self.writer.write_hexdump_str(s)?;
+        self.writer.flush()?;
         self.str_buffer.clear();
-    }
-
-    pub fn consume(self) -> W {
-        self.writer
+        Ok(())
     }
 }
 
-pub struct HexdumpRef<R: MyByteReader> {
+pub struct Hexd<R: MyByteReader> {
     reader: R,
-    options: HexdumpOptions
+    options: HexdOptions
 }
 
-impl<R: MyByteReader> HexdumpOptionsBuilder for HexdumpRef<R> {
-    fn as_options<'a>(&'a self) -> &'a HexdumpOptions {
+impl<R: MyByteReader> Hexd<R> {
+    pub fn dump<W: WriteHexdump + Default>(self) -> W::Output {
+        let hlw = HexdumpLineWriter::new(self.reader, W::default(), self.options);
+        hlw.do_hexdump()
+    }
+
+    pub fn dump_to<W: WriteHexdump>(self, writer: W) -> W::Output {
+        let hlw = HexdumpLineWriter::new(self.reader, writer, self.options);
+        hlw.do_hexdump()
+    }
+
+    pub fn print(self) {
+        self.dump_to(std::io::stdout());
+    }
+
+    pub fn print_err(self) {
+        self.dump_to(std::io::stderr());
+    }
+}
+
+impl<R: MyByteReader> HexdOptionsBuilder for Hexd<R> {
+    fn as_options<'a>(&'a self) -> &'a HexdOptions {
         &self.options
     }
 
-    fn with_options(self, o: HexdumpOptions) -> Self {
+    fn with_options(self, o: HexdOptions) -> Self {
         Self {
             options: o,
             ..self
@@ -1114,91 +1185,29 @@ impl<R: MyByteReader> HexdumpOptionsBuilder for HexdumpRef<R> {
     }
 }
 
-pub trait DoHexdum<'a>: Sized {
-    fn hexdump_into<W: WriteHexdump + Sized>(self, writer: W) -> W;
-    fn hexdump(self) {
-        self.hexdump_stdout();
-    }
-
-    fn hexdump_stdout(self) {
-        self.hexdump_into(HexdumpIoWriter(std::io::stdout()));
-    }
-
-    fn hexdump_stderr(self) {
-        self.hexdump_into(HexdumpIoWriter(std::io::stderr()));
-    }
-
-    fn hexdump_to_string(self) -> String {
-        self.hexdump_into(HexdumpFmtWriter(String::new())).0
-    }
+pub trait ToHexd {
+    type Output: MyByteReader;
+    fn to_hexd(self) -> Hexd<Self::Output>;
 }
 
-pub trait ToHexdump {
-    type Yield;
-    fn to_hexdump(self) -> Self::Yield;
-}
-
-impl<I: Iterator<Item = u8>> ToHexdump for I {
-    type Yield = HexdumpRef<IteratorByteReader<I>>;
-    fn to_hexdump(self) -> Self::Yield {
-        HexdumpRef {
+impl<I: Iterator<Item = u8>> ToHexd for I {
+    type Output = IteratorByteReader<I>;
+    fn to_hexd(self) -> Hexd<Self::Output> {
+        Hexd {
             reader: IteratorByteReader { iterator: self },
-            options: HexdumpOptions::default()
+            options: HexdOptions::default()
         }
     }
 }
 
-pub trait AsHexdump<'a, R: MyByteReader> {
-    fn as_hexdump_opts<O: Into<HexdumpOptions>>(&'a self, options: O) -> HexdumpRef<R>;
-
-    fn as_hexdump(&'a self) -> HexdumpRef<R> {
-        self.as_hexdump_opts(HexdumpOptions::default())
-    }
-
-    fn hexdump(&'a self) {
-        self.hexdump_into(HexdumpIoWriter(std::io::stdout()));
-    }
-
-    fn hexdump_string(&'a self) -> String {
-        self.hexdump_into(HexdumpFmtWriter(String::new())).0
-    }
-
-    fn hexdump_into<W: WriteHexdump + Sized>(&'a self, writer: W) -> W {
-        let h = self.as_hexdump();
-        let mut hlw = HexdumpLineWriter::new(h.reader, writer, h.options);
-        hlw.do_hexdump();
-        hlw.consume()
-    }
+pub trait AsHexd<'a, R: MyByteReader> {
+    fn as_hexd(&'a self) -> Hexd<R>;
 }
 
-impl<'a, T: AsRef<[u8]>> AsHexdump<'a, ByteSliceReader<'a>> for T {
-    fn as_hexdump_opts<O: Into<HexdumpOptions>>(&'a self, options: O) -> HexdumpRef<ByteSliceReader<'a>> {
+impl<'a, T: AsRef<[u8]>> AsHexd<'a, ByteSliceReader<'a>> for T {
+    fn as_hexd(&'a self) -> Hexd<ByteSliceReader<'a>> {
         let slice = self.as_ref();
         let reader = ByteSliceReader::new(slice);
-        HexdumpRef { reader, options: options.into() }
-    }
-}
-
-impl<'a, R: MyByteReader> DoHexdum<'a> for HexdumpRef<R> {
-    fn hexdump_into<W: WriteHexdump + Sized>(self, writer: W) -> W {
-        let mut hlw = HexdumpLineWriter::new(self.reader, writer, self.options);
-        hlw.do_hexdump();
-        hlw.consume()
-    }
-}
-
-// impl<R: RangeBounds<usize>> From<R> for HexdumpOptions {
-//     fn from(value: R) -> Self {
-//         let print_range = HexdumpRange::new(value);
-//         HexdumpOptions {
-//             print_range,
-//             ..Default::default()
-//         }
-//     }
-// }
-
-impl From<()> for HexdumpOptions {
-    fn from(_: ()) -> Self {
-        HexdumpOptions::default()
+        Hexd { reader, options: HexdOptions::default() }
     }
 }
