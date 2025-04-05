@@ -1,6 +1,6 @@
-use std::{cmp::min, env::set_current_dir, fmt::{Arguments, Debug}, fs, io::{BufRead, Write}, ops::{Bound, Deref, Range, RangeBounds}, str};
+use std::{cmp::min, env::set_current_dir, fmt::{Arguments, Debug}, fs, io::{BufRead, Write}, ops::{Bound, Deref, Range, RangeBounds}, path::Iter, str};
 
-use hexdump::{AsHexdump, ByteSliceReader, HexdumpIoWriter, HexdumpLineIterator, HexdumpLineWriter, HexdumpOptions, HexdumpRange, MyByteReader, SliceGroupedByteReader, SliceGroupedReader, WriteHexdump};
+use hexdump::{AsHexdump, ByteSliceReader, DoHexdum, GroupedOptions, HexdumpIoWriter, HexdumpLineWriter, HexdumpOptions, HexdumpOptionsBuilder, HexdumpRange, MyByteReader, SliceGroupedByteReader, SliceGroupedReader, ToHexdump, WriteHexdump};
 
 mod hexdump;
 #[cfg(test)]
@@ -42,57 +42,86 @@ fn vec_inc() -> Vec<u8> {
     o
 }
 
-fn dump_this_with_hli(slice: &[u8]) {
-    let mut writer = HexdumpIoWriter(std::io::stdout());
-
-    let options = HexdumpOptions {
-        print_range: HexdumpRange::new(17..),
-        omit_equal_rows: true,
-        uppercase: false,
-        align: false,
-        grouping: hexdump::Grouping::Grouped { group_size: hexdump::GroupSize::Short, num_groups: 8, byte_spacing: hexdump::Spacing::None, group_spacing: hexdump::Spacing::Normal },
-        ..Default::default()
-    };
-
-    let aligned = HexdumpOptions {
-        align: true,
-        ..options
-    };
-
-    let unaligned = HexdumpOptions {
-        align: false,
-        ..options
-    };
-
-    let mut hww = HexdumpLineWriter::new(ByteSliceReader::new(slice), writer, aligned);
-    hww.do_hexdump();
-    println!("");
-    println!("");
-    println!("");
-    println!("");
-    let mut hww = HexdumpLineWriter::new(ByteSliceReader::new(slice), HexdumpIoWriter(std::io::stdout()), unaligned);
-    hww.do_hexdump();
-}
-
 // Start
 // bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 // aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 // End
 
+pub struct RangeByteYielder {
+    ranges: Vec<(u8, usize)>,
+    range_index: usize,
+    elt_index: usize
+}
+
+impl RangeByteYielder {
+    fn new(ranges: Vec<(u8, usize)>) -> Self {
+        Self { ranges, range_index: 0, elt_index: 0 }
+    }
+}
+
+impl Iterator for RangeByteYielder {
+    type Item = u8;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.range_index >= self.ranges.len() {
+            return None;
+        }
+        let (b, len) = self.ranges[self.range_index];
+        if self.elt_index >= len {
+            self.range_index += 1;
+            self.elt_index = 0;
+            return self.next();
+        }
+        self.elt_index += 1;
+        Some(b)
+    }
+}
+
+struct ByteYielder {
+    len: usize,
+    index: usize,
+    b: u8
+}
+
+impl ByteYielder {
+    fn new(b: u8, len: usize) -> Self {
+        Self { len, index: 0, b }
+    }
+}
+
+impl Iterator for ByteYielder {
+    type Item = u8;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.len {
+            return None;
+        }
+        self.index += 1;
+        Some(self.b)
+    }
+}
 
 fn main() {
-    // println!("{:#x}", usize::MAX);
-    // dump_this_with_hli(&vec_main_rs());
-    vec_main_rs().as_hexdump_opts(());
-    vec_000().hexdump();
-    // dbg!(usize::BITS);
-    // f.extend_from_slice(&[0xaabb88ffu32; 20]);
+    let opts = HexdumpOptions::default()
+        .range(..0xa60)
+        .aligned(true)
+        .uppercase(true)
+        .grouped(hexdump::GroupSize::Int, 8, hexdump::Spacing::None, hexdump::Spacing::Normal)
+        .autoskip(true);
 
-    // let mut sgbr = SliceGroupedByteReader::new(&f, hexdump::Endianness::LittleEndian);
-    // loop {
-    //     let mut s_into = [0u8; 16];
-    //     let s = sgbr.next_bytes(&mut s_into);
-    //     if s.len() == 0 { break; }
-    //     dbg!(s);
-    // }
+    vec_main_rs().as_hexdump()
+        .with_options(opts.clone())
+        .range(..)
+        .absolute_offset(0xffffffff0usize)
+        .hexdump();
+
+    let u = 0xffffffffffffffffusize;
+
+    RangeByteYielder::new(vec![
+        (b'a', 128),
+        (b'b', 129)
+    ]).to_hexdump().range(..).with_options(opts.clone()).hexdump();
+
+    ByteYielder::new(8u8, 0x81)
+        .to_hexdump()
+        .range(..)
+        .hexdump();
 }
