@@ -1210,9 +1210,12 @@ impl<R: MyByteReader> HexdOptionsBuilder for Hexd<R> {
     }
 }
 
-pub trait ToHexd {
+pub trait ToHexd: Sized {
     type Output: MyByteReader;
     fn to_hexd(self) -> Hexd<Self::Output>;
+    fn hexd(self) -> Hexd<Self::Output> {
+        self.to_hexd()
+    }
 }
 
 impl<I: Iterator<Item = u8>> ToHexd for I {
@@ -1227,6 +1230,9 @@ impl<I: Iterator<Item = u8>> ToHexd for I {
 
 pub trait AsHexd<'a, R: MyByteReader> {
     fn as_hexd(&'a self) -> Hexd<R>;
+    fn hexd(&'a self) -> Hexd<R> {
+        self.as_hexd()
+    }
 }
 
 impl<'a, T: AsRef<[u8]>> AsHexd<'a, ByteSliceReader<'a>> for T {

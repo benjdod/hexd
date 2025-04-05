@@ -1,10 +1,6 @@
 use indoc::indoc;
 
-use crate::hexdump::{AsHexd, GroupedOptions, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, ToHexd};
-
-fn usage() {
-    let x = vec![0u8; 32];
-}
+use crate::hexdump::{GroupedOptions, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, ToHexd};
 
 fn test_range_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()> {
     // Given
@@ -15,7 +11,7 @@ fn test_range_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()
     } = test;
 
     // When
-    let dump = input.to_hexd().with_options(options).dump::<String>();
+    let dump = input.hexd().with_options(options).dump::<String>();
 
     // Then
     similar_asserts::assert_eq!(output, &dump, "hexdump output did not equal expected value");
