@@ -2,7 +2,7 @@
 //! Hexd is a simple and configurable hex dump utility for Rust.
 //! 
 //! ```rust
-//! use hexd::{AsHexd, options::HexdOptionsBuilder};
+//! use hexd::{AsHexd, options::HexdOptionsBuilder, options::{GroupSize, Spacing}};
 //! 
 //! let v = b"Hello, world! Hopefully you're seeing this in hexd...";
 //! 
@@ -20,7 +20,7 @@
 //! 
 //! greeting.hexd()
 //!     .range(7..)
-//!     .grouping(GroupSize::Int, Spacing::None, 4, Spacing::Wide)
+//!     .grouped(GroupSize::Int, Spacing::None, 4, Spacing::Wide)
 //!     .dump();
 //! // 00000000:                 20  49276420  6C696B65 |        I'd like|
 //! // 00000010: 20746F20  73637265  616D2066  6F722069 | to scream for i|
@@ -34,7 +34,7 @@
 use std::{cmp::{max, min}, fmt::Debug, io::Write};
 
 use options::{Endianness, GroupedOptions, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, Spacing};
-use reader::{ByteSliceReader, ReadBytes, IteratorByteReader};
+use reader::{ByteSliceReader, GroupedSliceByteReader, IteratorByteReader, ReadBytes};
 use writer::{WriteHexdump, IOWriter};
 
 /// All [`Hexd`] options.
@@ -153,96 +153,6 @@ impl<const N: usize> AsRef<[u8]> for StackBuffer<N> {
         &self.buffer[..self.len]
     }
 }
-
-
-trait EndianBytes<const N: usize> {
-    fn to_bytes(&self, end: Endianness) -> [u8; N];
-}
-
-impl EndianBytes<1> for u8 {
-    fn to_bytes(&self, _: Endianness) -> [u8; 1] {
-        [*self]
-    }
-}
-
-impl EndianBytes<1> for i8 {
-    fn to_bytes(&self, _: Endianness) -> [u8; 1] {
-        [*self as u8]
-    }
-}
-
-impl EndianBytes<2> for u16 {
-    fn to_bytes(&self, endianness: Endianness) -> [u8; 2] {
-        match endianness {
-            Endianness::BigEndian => self.to_be_bytes(),
-            Endianness::LittleEndian => self.to_le_bytes()
-        }
-    }
-}
-
-impl EndianBytes<2> for i16 {
-    fn to_bytes(&self, endianness: Endianness) -> [u8; 2] {
-        match endianness {
-            Endianness::BigEndian => self.to_be_bytes(),
-            Endianness::LittleEndian => self.to_le_bytes()
-        }
-    }
-}
-
-impl EndianBytes<4> for u32 {
-    fn to_bytes(&self, endianness: Endianness) -> [u8; 4] {
-        match endianness {
-            Endianness::BigEndian => self.to_be_bytes(),
-            Endianness::LittleEndian => self.to_le_bytes()
-        }
-    }
-}
-
-impl EndianBytes<4> for i32 {
-    fn to_bytes(&self, endianness: Endianness) -> [u8; 4] {
-        match endianness {
-            Endianness::BigEndian => self.to_be_bytes(),
-            Endianness::LittleEndian => self.to_le_bytes()
-        }
-    }
-}
-
-impl EndianBytes<8> for u64 {
-    fn to_bytes(&self, endianness: Endianness) -> [u8; 8] {
-        match endianness {
-            Endianness::BigEndian => self.to_be_bytes(),
-            Endianness::LittleEndian => self.to_le_bytes()
-        }
-    }
-}
-
-impl EndianBytes<8> for i64 {
-    fn to_bytes(&self, endianness: Endianness) -> [u8; 8] {
-        match endianness {
-            Endianness::BigEndian => self.to_be_bytes(),
-            Endianness::LittleEndian => self.to_le_bytes()
-        }
-    }
-}
-
-impl EndianBytes<16> for u128 {
-    fn to_bytes(&self, endianness: Endianness) -> [u8; 16] {
-        match endianness {
-            Endianness::BigEndian => self.to_be_bytes(),
-            Endianness::LittleEndian => self.to_le_bytes()
-        }
-    }
-}
-
-impl EndianBytes<16> for i128 {
-    fn to_bytes(&self, endianness: Endianness) -> [u8; 16] {
-        match endianness {
-            Endianness::BigEndian => self.to_be_bytes(),
-            Endianness::LittleEndian => self.to_le_bytes()
-        }
-    }
-}
-
 
 #[derive(Debug, Clone)]
 struct RowBuffer {
@@ -474,7 +384,8 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
                 self.flush_line()?;
             }
 
-            let row_index = (i - 1) * self.options.elt_width();
+            // let row_index = (i - 1) * self.options.elt_width();
+            let row_index = self.line_iterator.index - self.options.elt_width();
 
             let elided_row = r;
             self.write_row_index(row_index);
@@ -584,7 +495,9 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
             self.str_buffer.push(b'\n');
         }
         let s = self.str_buffer.as_str();
-        self.writer.write_line(s)?;
+        if s.len() > 0 {
+            self.writer.write_line(s)?;
+        }
         self.str_buffer.clear();
         Ok(())
     }
@@ -717,6 +630,10 @@ pub trait AsHexd<'a, R: ReadBytes> {
     }
 }
 
+pub trait AsHexdGrouped<'a, R: ReadBytes> {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<R>;
+}
+
 /// Blanket implementation for any type that implements `AsRef<[u8]>`.
 /// In other words, any type that can be seen as a slice of `u8` can be 
 /// quickly made into [`Hexd`].
@@ -740,5 +657,90 @@ impl<'a, T: AsRef<[u8]>> AsHexd<'a, ByteSliceReader<'a>> for T {
     }
 }
 
-#[cfg(test)]
-mod test;
+impl<'a, T: AsRef<[i8]>> AsHexd<'a, GroupedSliceByteReader<'a, i8, 1>> for T {
+    fn as_hexd(&'a self) -> Hexd<GroupedSliceByteReader<'a, i8, 1>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, Endianness::BigEndian);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl<'a, T: AsRef<[i8]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i8, 1>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i8, 1>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl <'a, T: AsRef<[u8]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u8, 1>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u8, 1>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl <'a, T: AsRef<[u16]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u16, 2>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u16, 2>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl <'a, T: AsRef<[i16]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i16, 2>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i16, 2>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl <'a, T: AsRef<[u32]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u32, 4>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u32, 4>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl <'a, T: AsRef<[i32]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i32, 4>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i32, 4>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl <'a, T: AsRef<[u64]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u64, 8>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u64, 8>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl <'a, T: AsRef<[i64]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i64, 8>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i64, 8>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl <'a, T: AsRef<[u128]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u128, 16>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u128, 16>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}
+
+impl <'a, T: AsRef<[i128]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i128, 16>> for T {
+    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i128, 16>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        Hexd { reader, options: HexdOptions::default() }
+    }
+}

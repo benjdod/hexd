@@ -31,7 +31,8 @@
                     "test",
                     "--no-run",
                     "--bin=hexd",
-                    "--package=hexd"
+                    "--package=hexd",
+                    "--nocapture"
                 ],
                 "filter": {
                     "name": "hexd",

@@ -1,6 +1,6 @@
 use std::{cmp::min, convert::Infallible, fmt::Debug};
 
-use crate::{EndianBytes, Endianness};
+use crate::Endianness;
 
 #[doc(hidden)]
 pub trait GroupedReader<const N: usize> {
@@ -8,7 +8,6 @@ pub trait GroupedReader<const N: usize> {
     fn size(&self) -> usize { N }
 }
 
-#[doc(hidden)]
 pub struct ByteSliceReader<'a> {
     slice: &'a [u8],
     index: usize
@@ -43,13 +42,98 @@ impl<'a> ReadBytes for ByteSliceReader<'a> {
     }
 }
 
-#[doc(hidden)]
+trait EndianBytes<const N: usize> {
+    fn to_bytes(&self, end: Endianness) -> [u8; N];
+}
+
+impl EndianBytes<1> for u8 {
+    fn to_bytes(&self, _: Endianness) -> [u8; 1] {
+        [*self]
+    }
+}
+
+impl EndianBytes<1> for i8 {
+    fn to_bytes(&self, _: Endianness) -> [u8; 1] {
+        [*self as u8]
+    }
+}
+
+impl EndianBytes<2> for u16 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 2] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<2> for i16 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 2] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<4> for u32 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 4] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<4> for i32 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 4] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<8> for u64 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 8] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<8> for i64 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 8] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<16> for u128 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 16] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
+
+impl EndianBytes<16> for i128 {
+    fn to_bytes(&self, endianness: Endianness) -> [u8; 16] {
+        match endianness {
+            Endianness::BigEndian => self.to_be_bytes(),
+            Endianness::LittleEndian => self.to_le_bytes()
+        }
+    }
+}
 pub struct GroupedSliceReader<'a, U: EndianBytes<N>, const N: usize> {
     slice: &'a[U],
     index: usize
 }
 
-#[doc(hidden)]
 pub struct GroupedSliceByteReader<'a, U: EndianBytes<N>, const N: usize> {
     slice: &'a [U],
     elt_index: usize,
@@ -166,7 +250,6 @@ impl<'a, const N: usize, U: EndianBytes<N>> GroupedReader<N> for GroupedSliceRea
     }
 }
 
-#[doc(hidden)]
 pub struct IteratorByteReader<I: Iterator<Item = u8>> {
     iterator: I
 }

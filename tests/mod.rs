@@ -1,8 +1,8 @@
-use std::io::Stdout;
+use std::convert::Infallible;
 
 use indoc::indoc;
 
-use crate::{AsHexd, GroupedOptions, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, IntoHexd, options::{GroupSize, HexdRange, Spacing}};
+use hexd::{options::{GroupSize, GroupedOptions, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, Spacing}, writer::WriteHexdump, AsHexd, IntoHexd};
 
 fn test_range_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()> {
     // Given
@@ -12,10 +12,9 @@ fn test_range_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()
         options 
     } = test;
 
-    let s = "hello";
-
     // When
-    let dump = input.hexd().with_options(options).dump_to::<String>();
+    let dump_lines = input.hexd().with_options(options).dump_to::<Vec<String>>();
+    let dump = dump_lines.join("");
 
     // Then
     similar_asserts::assert_eq!(output, &dump, "hexdump output did not equal expected value");
