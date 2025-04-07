@@ -584,13 +584,9 @@ impl<R: ReadBytes> Hexd<R> {
 /// [`Hexd`] implements [`HexdOptionsBuilder`] to allow for fluent
 /// configuration.
 impl<R: ReadBytes> HexdOptionsBuilder for Hexd<R> {
-    fn as_options(&self) -> HexdOptions {
-        self.options
-    }
-
-    fn with_options(self, o: HexdOptions) -> Self {
-        Self {
-            options: o,
+    fn map_options<F: FnOnce(HexdOptions) -> HexdOptions>(self, f: F) -> Self {
+        Hexd {
+            options: f(self.options),
             ..self
         }
     }

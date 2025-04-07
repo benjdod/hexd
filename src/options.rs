@@ -266,91 +266,79 @@ impl Default for HexdOptions {
 /// This provides a fluent API to configure options over any type
 /// which holds a [`HexdOptions`] instance.
 pub trait HexdOptionsBuilder: Sized {
-    /// Return the current options.
-    fn as_options(&self) -> HexdOptions;
+    /// Return a new instance of `Self` with the mapping function applied
+    /// to the instance's options.
+    fn map_options<F: FnOnce(HexdOptions) -> HexdOptions>(self, f: F) -> Self;
 
     /// Return a new instance of `Self` with the given options.
-    fn with_options(self, o: HexdOptions) -> Self;
+    fn with_options(self, o: HexdOptions) -> Self {
+        self.map_options(|_| o)
+    }
 
     /// Set a range of bytes to dump.
     /// This is equivalent to setting the value of the [`print_range`](HexdOptions::print_range) field.
     fn range<R: RangeBounds<usize>>(self, range: R) -> Self {
-        let o = self.as_options();
-        self.with_options(HexdOptions { print_range: HexdRange::new(range), ..o })
+        self.map_options(|o| HexdOptions {
+            print_range: HexdRange::new(range),
+            ..o
+        })
     }
     fn aligned(self, align: bool) -> Self {
-        let o = self.as_options();
-        self.with_options(HexdOptions {
+        self.map_options(|o| HexdOptions {
             align,
             ..o
         })
     }
     fn uppercase(self, uppercase: bool) -> Self {
-        let o = self.as_options();
-        let options = HexdOptions {
+        self.map_options(|o| HexdOptions {
             uppercase,
-            ..o.clone()
-        };
-        self.with_options(options)
+            ..o
+        })
     }
     fn grouping(self, grouping: Grouping) -> Self {
-        let o = self.as_options();
-        let options = HexdOptions {
+        self.map_options(|o| HexdOptions {
             grouping,
-            ..o.clone()
-        };
-        self.with_options(options)
+            ..o
+        })
     }
     fn ungrouped(self, num_bytes: usize, spacing: Spacing) -> Self {
-        let o = self.as_options();
-        let grouping = Grouping::Ungrouped { byte_count: num_bytes, spacing };
-        let options = HexdOptions {
-            grouping,
-            ..o.clone()
-        };
-        self.with_options(options)
+        self.map_options(|o| HexdOptions {
+            grouping: Grouping::Ungrouped {
+                byte_count: num_bytes,
+                spacing
+            },
+            ..o
+        })
     }
     fn grouped(self, group_size: GroupSize, byte_spacing: Spacing, num_groups: usize, group_spacing: Spacing) -> Self {
-        let o = self.as_options();
-        let grouping = Grouping::Grouped(GroupedOptions { group_size, num_groups, byte_spacing, group_spacing });
-        let options = HexdOptions {
-            grouping,
-            ..o.clone()
-        };
-        self.with_options(options)
+        self.map_options(|o| HexdOptions {
+            grouping: Grouping::Grouped(GroupedOptions { group_size, num_groups, byte_spacing, group_spacing }),
+            ..o
+        })
     }
     fn autoskip(self, autoskip: bool) -> Self {
-        let o = self.as_options();
-        let options = HexdOptions {
+        self.map_options(|o| HexdOptions {
             autoskip,
-            ..o.clone()
-        };
-        self.with_options(options)
+            ..o
+        })
     }
     fn relative_offset(self, offset: usize) -> Self {
-        let o = self.as_options();
-        let options = HexdOptions {
+        self.map_options(|o| HexdOptions {
             index_offset: IndexOffset::Relative(offset),
-            ..o.clone()
-        };
-        self.with_options(options)
+            ..o
+        })
     }
     fn absolute_offset(self, offset: usize) -> Self {
-        let o = self.as_options();
-        let options = HexdOptions {
+        self.map_options(|o| HexdOptions {
             index_offset: IndexOffset::Absolute(offset),
-            ..o.clone()
-        };
-        self.with_options(options)
+            ..o
+        })
     }
 }
 
 impl HexdOptionsBuilder for HexdOptions {
-    fn as_options(&self) -> HexdOptions {
-        *self
-    }
-    fn with_options(self, o: HexdOptions) -> Self {
-        o
+    fn map_options<F: FnOnce(HexdOptions) -> HexdOptions>(self, f: F) -> Self {
+        f(self)
     }
 }
 
