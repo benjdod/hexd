@@ -33,7 +33,7 @@
 
 use std::{cmp::{max, min}, fmt::Debug, io::Write};
 
-use options::{Endianness, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, Spacing};
+use options::{Endianness, FlushMode, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, Spacing};
 use reader::{ByteSliceReader, GroupedSliceByteReader, IteratorByteReader, ReadBytes};
 use writer::{WriteHexdump, IOWriter};
 
@@ -326,13 +326,14 @@ struct HexdumpLineWriter<R: ReadBytes, W: WriteHexdump> {
     writer: W,
     elided_row: Option<(RowBuffer, usize)>,
     str_buffer: StackBuffer<256>,
-    options: HexdOptions
+    options: HexdOptions,
+    flush_idx: usize
 }
 
 impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
     fn new(reader: R, writer: W, options: HexdOptions) -> Self {
         let line_iterator = HexdumpLineIterator::new(reader, options.clone());
-        Self { line_iterator, writer, elided_row: None, str_buffer: StackBuffer::<256>::new(), options }
+        Self { line_iterator, writer, elided_row: None, str_buffer: StackBuffer::<256>::new(), options, flush_idx: 0 }
     }
 
     fn do_hexdump(mut self) -> W::Output {
@@ -341,9 +342,13 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
             Ok(_) => Ok(self.writer),
             Err(e) => Err(e)
         }.and_then(|mut w| {
-            match w.flush() {
-                Ok(_) => Ok(w),
-                Err(e) => Err(e)
+            if let FlushMode::End = self.options.flush {
+                match w.flush() {
+                    Ok(_) => Ok(w),
+                    Err(e) => Err(e)
+                }
+            } else {
+                Ok(w)
             }
         });
         WriteHexdump::consume(ll)
@@ -397,6 +402,13 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
             self.write_row_ascii(&elided_row);
             self.flush_line()?;
         };
+
+        if let FlushMode::AfterNLines(n) = self.options.flush {
+            if n > 0 && self.flush_idx % n != 0 {
+                self.writer.flush()?;
+            }
+        }
+
         Ok(())
     }
 
@@ -502,6 +514,15 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
         if s.len() > 0 {
             self.writer.write_line(s)?;
         }
+
+        self.flush_idx += 1;
+
+        if let FlushMode::AfterNLines(n) = self.options.flush {
+            if n > 0 && self.flush_idx % n == 0 {
+                self.writer.flush()?;
+            }
+        }
+
         self.str_buffer.clear();
         Ok(())
     }

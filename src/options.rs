@@ -147,7 +147,24 @@ pub struct HexdOptions {
     ///     "0000204B: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
     /// ));
     /// ```
-    pub index_offset: IndexOffset
+    pub index_offset: IndexOffset,
+
+    /// Flush behavior to use when writing the hexdump. 
+    /// 
+    /// *Note: this is likely only useful when writing to a stream or IO-based output.*
+    pub flush: FlushMode
+}
+
+/// Control how often [`flush`](method@crate::writer::WriteHexdump::flush) is called on the writer.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FlushMode {
+    /// Call [`flush`](method@crate::writer::WriteHexdump::flush) on the writer after `n` lines
+    /// have been written to it.
+    AfterNLines(usize),
+
+    /// Call [`flush`](method@crate::writer::WriteHexdump::flush) on the writer after all lines
+    /// have been written to it.
+    End
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -359,7 +376,7 @@ impl Spacing {
 
 /// The default options for [`Hexd`](crate::Hexd).
 /// 
-/// ```no_run
+/// ```rust,ignore
 /// HexdOptions {
 ///     autoskip: true,
 ///     uppercase: true,
@@ -379,7 +396,8 @@ impl Default for HexdOptions {
             align: true,
             grouping: Grouping::default(),
             print_range: HexdRange { skip: 0, limit: None },
-            index_offset: IndexOffset::Relative(0)
+            index_offset: IndexOffset::Relative(0),
+            flush: FlushMode::End
         }
     }
 }
@@ -478,6 +496,14 @@ pub trait HexdOptionsBuilder: Sized {
     fn absolute_offset(self, offset: usize) -> Self {
         self.map_options(|o| HexdOptions {
             index_offset: IndexOffset::Absolute(offset),
+            ..o
+        })
+    }
+
+    /// Set the value of the [`flush`](HexdOptions::flush) field.
+    fn flush(self, flush: FlushMode) -> Self {
+        self.map_options(|o| HexdOptions {
+            flush,
             ..o
         })
     }
