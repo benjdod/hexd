@@ -47,18 +47,75 @@ pub struct HexdOptions {
     /// If true and if combined with a [`print_range`](Self::print_range) 
     /// that does not start on an even group alignment, the hex values are 
     /// displayed offset.
+    /// 
+    /// ```rust
+    /// use hexd::{AsHexd, options::HexdOptionsBuilder};
+    /// 
+    /// let v = vec![0u8; 32];
+    /// 
+    /// let dump = v.hexd().range(7..).aligned(true).dump_to::<String>();
+    /// assert_eq!(dump, concat!(
+    ///     "00000000:                  00 0000 0000 0000 0000 |       .........|\n",
+    ///     "00000010: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n"
+    /// ));
+    /// 
+    /// let dump = v.hexd().range(7..).aligned(false).dump_to::<String>();
+    /// assert_eq!(dump, concat!(
+    ///     "00000007: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
+    ///     "00000017: 0000 0000 0000 0000 00                  |.........       |\n"
+    /// ));
+    /// ```
     pub align: bool,
 
-    /// The grouping options for the hex values.
+    /// The grouping options for the hex values. For more information,
+    /// see [`Grouping`].
     pub grouping: Grouping,
 
     /// The range of bytes to print.
     /// 
-    /// Note: this value is typically set using [`HexdOptionsBuilder::range`].
+    /// *Note: this value is typically set using [`HexdOptionsBuilder::range`].*
+    /// 
+    /// ```
+    /// use hexd::{AsHexd, options::HexdOptionsBuilder};
+    /// 
+    /// let v = vec![0u8; 256];
+    /// 
+    /// let dump = v.hexd().range(0x47..0xb3).dump_to::<String>();
+    /// assert_eq!(dump, concat!(
+    ///     "00000040:                  00 0000 0000 0000 0000 |       .........|\n",
+    ///     "00000050: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
+    ///     "*\n",
+    ///     "000000A0: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
+    ///     "000000B0: 0000 00                                 |...             |\n",
+    /// ));
+    /// ```
     pub print_range: HexdRange,
 
     /// The offset to use for the printed index on the 
     /// left side of the hex dump.
+    /// 
+    /// ```
+    /// use hexd::{AsHexd, options::HexdOptionsBuilder};
+    /// 
+    /// let v = vec![0u8; 256];
+    /// 
+    /// let dump = v.hexd().range(0x47..0xb3).relative_offset(0xfff0000).dump_to::<String>();
+    /// assert_eq!(dump, concat!(
+    ///     "0FFF0040:                  00 0000 0000 0000 0000 |       .........|\n",
+    ///     "0FFF0050: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
+    ///     "*\n",
+    ///     "0FFF00A0: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
+    ///     "0FFF00B0: 0000 00                                 |...             |\n",
+    /// ));
+    /// 
+    /// let v = &v[..64];
+    /// let dump = v.hexd().absolute_offset(0x201B).dump_to::<String>();
+    /// assert_eq!(dump, concat!(
+    ///     "0000201B: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
+    ///     "*\n",
+    ///     "0000204B: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
+    /// ));
+    /// ```
     pub index_offset: IndexOffset
 }
 
@@ -118,24 +175,6 @@ impl Default for GroupedOptions {
             num_groups: 8,
             group_spacing: Spacing::Normal
         }
-    }
-}
-
-impl GroupedOptions {
-    pub fn byte_spacing(self, byte_spacing: Spacing) -> Self {
-        Self { byte_spacing, ..self }
-    }
-
-    pub fn group_spacing(self, group_spacing: Spacing) -> Self {
-        Self { group_spacing, ..self }
-    }
-
-    pub fn num_groups(self, num_groups: usize) -> Self {
-        Self { num_groups, ..self }
-    }
-
-    pub fn group_size(self, group_size: GroupSize) -> Self {
-        Self { group_size, ..self }
     }
 }
 
@@ -319,6 +358,12 @@ pub trait HexdOptionsBuilder: Sized {
     fn autoskip(self, autoskip: bool) -> Self {
         self.map_options(|o| HexdOptions {
             autoskip,
+            ..o
+        })
+    }
+    fn offset(self, index_offset: IndexOffset) -> Self {
+        self.map_options(|o| HexdOptions {
+            index_offset,
             ..o
         })
     }

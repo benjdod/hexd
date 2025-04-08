@@ -1,5 +1,3 @@
-use std::convert::Infallible;
-
 use indoc::indoc;
 
 use hexd::{options::{GroupSize, GroupedOptions, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, Spacing}, writer::WriteHexdump, AsHexd, IntoHexd};
