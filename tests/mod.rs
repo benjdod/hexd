@@ -1,6 +1,6 @@
 use indoc::indoc;
 
-use hexd::{options::{GroupSize, GroupedOptions, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, Spacing}, writer::WriteHexdump, AsHexd, IntoHexd};
+use hexd::{options::{GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, Spacing}, IntoHexd};
 
 fn test_range_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()> {
     // Given
@@ -75,7 +75,7 @@ fn default_test_options() -> HexdOptions {
         uppercase: true,
         print_ascii: true,
         align: true,
-        grouping: Grouping::Grouped(GroupedOptions::default()),
+        grouping: Grouping::default(),
         print_range: HexdRange { skip: 0, limit: None },
         index_offset: IndexOffset::Relative(0)
     };

@@ -33,13 +33,17 @@
 
 use std::{cmp::{max, min}, fmt::Debug, io::Write};
 
-use options::{Endianness, GroupedOptions, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, Spacing};
+use options::{Endianness, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, Spacing};
 use reader::{ByteSliceReader, GroupedSliceByteReader, IteratorByteReader, ReadBytes};
 use writer::{WriteHexdump, IOWriter};
 
 /// All [`Hexd`] options.
 pub mod options;
+
+/// A collection of [reader](reader::ReadBytes) types that wrap common data types.
 pub mod reader;
+
+/// The [`WriteHexdump`] trait and several foreign type implementations.
 pub mod writer;
 
 
@@ -203,7 +207,7 @@ impl ElisionMatch {
                     None
                 }
             },
-            Grouping::Grouped(GroupedOptions { group_size, num_groups: _, byte_spacing: _, group_spacing: _ }) => {
+            Grouping::Grouped { group_size, num_groups: _, byte_spacing: _, group_spacing: _ } => {
                 let group_size = group_size.element_count();
                 let s = &buffer.as_slice()[..group_size];
                 if s.chunks(group_size).all(|chunk| { 
@@ -511,6 +515,16 @@ pub struct Hexd<R: ReadBytes> {
 }
 
 impl<R: ReadBytes> Hexd<R> {
+    /// Construct a new [`Hexd`] instance with the given reader and [default options](HexdOptions::default).
+    pub fn new(reader: R) -> Self {
+        Hexd { reader, options: HexdOptions::default() }
+    }
+
+    /// Construct a new [`Hexd`] instance with the given reader and options.
+    pub fn new_with_options(reader: R, options: HexdOptions) -> Self {
+        Hexd { reader, options }
+    }
+
     /// Print a hexdump. This method is synonymous with [`print`](Hexd::print).
     /// 
     /// ```
@@ -661,27 +675,18 @@ impl<'a, T: AsRef<[i8]>> AsHexd<'a, GroupedSliceByteReader<'a, i8, 1>> for T {
     }
 }
 
-impl<'a, T: AsRef<[i8]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i8, 1>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i8, 1>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
-    }
-}
-
-impl <'a, T: AsRef<[u8]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u8, 1>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u8, 1>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
-    }
-}
-
 impl <'a, T: AsRef<[u16]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u16, 2>> for T {
     fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u16, 2>> {
         let slice = self.as_ref();
         let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
+        let options = HexdOptions::default()
+            .grouping(Grouping::Grouped { 
+                group_size: options::GroupSize::Short, 
+                byte_spacing: Spacing::None, 
+                num_groups: 8, 
+                group_spacing: Spacing::Normal 
+            });
+        Hexd { reader, options }
     }
 }
 
@@ -689,7 +694,14 @@ impl <'a, T: AsRef<[i16]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i16, 2>>
     fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i16, 2>> {
         let slice = self.as_ref();
         let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
+        let options = HexdOptions::default()
+            .grouping(Grouping::Grouped { 
+                group_size: options::GroupSize::Short, 
+                byte_spacing: Spacing::None, 
+                num_groups: 8, 
+                group_spacing: Spacing::Normal 
+            });
+        Hexd { reader, options }
     }
 }
 
@@ -697,7 +709,14 @@ impl <'a, T: AsRef<[u32]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u32, 4>>
     fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u32, 4>> {
         let slice = self.as_ref();
         let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
+        let options = HexdOptions::default()
+            .grouping(Grouping::Grouped { 
+                group_size: options::GroupSize::Int, 
+                byte_spacing: Spacing::None, 
+                num_groups: 4, 
+                group_spacing: Spacing::Normal 
+            });
+        Hexd { reader, options }
     }
 }
 
@@ -705,7 +724,14 @@ impl <'a, T: AsRef<[i32]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i32, 4>>
     fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i32, 4>> {
         let slice = self.as_ref();
         let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
+        let options = HexdOptions::default()
+            .grouping(Grouping::Grouped { 
+                group_size: options::GroupSize::Int, 
+                byte_spacing: Spacing::None, 
+                num_groups: 4, 
+                group_spacing: Spacing::Normal 
+            });
+        Hexd { reader, options }
     }
 }
 
@@ -713,7 +739,14 @@ impl <'a, T: AsRef<[u64]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u64, 8>>
     fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u64, 8>> {
         let slice = self.as_ref();
         let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
+        let options = HexdOptions::default()
+            .grouping(Grouping::Grouped { 
+                group_size: options::GroupSize::Long, 
+                byte_spacing: Spacing::None, 
+                num_groups: 2, 
+                group_spacing: Spacing::Normal 
+            });
+        Hexd { reader, options }
     }
 }
 
@@ -721,7 +754,14 @@ impl <'a, T: AsRef<[i64]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i64, 8>>
     fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i64, 8>> {
         let slice = self.as_ref();
         let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
+        let options = HexdOptions::default()
+            .grouping(Grouping::Grouped { 
+                group_size: options::GroupSize::Long, 
+                byte_spacing: Spacing::None, 
+                num_groups: 2, 
+                group_spacing: Spacing::Normal 
+            });
+        Hexd { reader, options }
     }
 }
 
@@ -729,7 +769,14 @@ impl <'a, T: AsRef<[u128]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u128, 1
     fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u128, 16>> {
         let slice = self.as_ref();
         let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
+        let options = HexdOptions::default()
+            .grouping(Grouping::Grouped { 
+                group_size: options::GroupSize::ULong, 
+                byte_spacing: Spacing::Normal, 
+                num_groups: 1, 
+                group_spacing: Spacing::Normal 
+            });
+        Hexd { reader, options }
     }
 }
 
@@ -737,6 +784,13 @@ impl <'a, T: AsRef<[i128]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i128, 1
     fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i128, 16>> {
         let slice = self.as_ref();
         let reader = GroupedSliceByteReader::new(slice, endianness);
-        Hexd { reader, options: HexdOptions::default() }
+        let options = HexdOptions::default()
+            .grouping(Grouping::Grouped { 
+                group_size: options::GroupSize::ULong, 
+                byte_spacing: Spacing::Normal, 
+                num_groups: 1, 
+                group_spacing: Spacing::Normal 
+            });
+        Hexd { reader, options }
     }
 }
