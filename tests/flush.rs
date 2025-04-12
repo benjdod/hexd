@@ -37,7 +37,8 @@ fn test_flush_after_n_lines() {
     let v = vec![0u8; 87];
 
     // When
-    let flushes = v.hexd()
+    let flushes = v
+        .hexd()
         .autoskip(false)
         .ungrouped(8, hexd::options::Spacing::None)
         .flush(hexd::options::FlushMode::AfterNLines(4))
@@ -53,7 +54,8 @@ fn test_flush_at_eof() {
     let v = vec![0u8; 71];
 
     // When
-    let flushes = v.hexd()
+    let flushes = v
+        .hexd()
         .autoskip(false)
         .ungrouped(8, hexd::options::Spacing::None)
         .flush(hexd::options::FlushMode::End)

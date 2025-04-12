@@ -12,9 +12,12 @@ fn default_test_options() -> HexdOptions {
         print_ascii: true,
         align: true,
         grouping: Grouping::default(),
-        print_range: HexdRange { skip: 0, limit: None },
+        print_range: HexdRange {
+            skip: 0,
+            limit: None,
+        },
         index_offset: IndexOffset::Relative(0),
-        flush: FlushMode::End
+        flush: FlushMode::End,
     };
     default_options
 }

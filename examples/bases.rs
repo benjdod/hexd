@@ -9,9 +9,7 @@ fn main() {
     //     .dump();
     // println!();
 
-    v.hexd()
-        .decimal()
-        .dump();
+    v.hexd().decimal().dump();
     println!();
 
     // v.hexd()

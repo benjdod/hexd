@@ -1,5 +1,8 @@
-use common::{RenderTestCase, ByteSequence};
-use hexd::options::{FlushMode, GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, Spacing};
+use common::{ByteSequence, RenderTestCase};
+use hexd::options::{
+    FlushMode, GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset,
+    Spacing,
+};
 use indoc::indoc;
 
 mod common;
@@ -12,9 +15,12 @@ fn default_test_options() -> HexdOptions {
         print_ascii: true,
         align: true,
         grouping: Grouping::default(),
-        print_range: HexdRange { skip: 0, limit: None },
+        print_range: HexdRange {
+            skip: 0,
+            limit: None,
+        },
         index_offset: IndexOffset::Relative(0),
-        flush: FlushMode::End
+        flush: FlushMode::End,
     };
     default_options
 }
@@ -104,9 +110,9 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                (GroupSize::Short, 
-                Spacing::None), 
-                (4, 
+                (GroupSize::Short,
+                Spacing::None),
+                (4,
                 Spacing::Normal)
             )
     },
@@ -121,9 +127,9 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                (GroupSize::Short, 
-                Spacing::Normal), 
-                (4, 
+                (GroupSize::Short,
+                Spacing::Normal),
+                (4,
                 Spacing::Wide)
             )
     },
@@ -140,9 +146,9 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                (GroupSize::Short, 
-                Spacing::Normal), 
-                (4, 
+                (GroupSize::Short,
+                Spacing::Normal),
+                (4,
                 Spacing::None)
             )
     },
@@ -157,9 +163,9 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                (GroupSize::Int, 
-                Spacing::None), 
-                (2, 
+                (GroupSize::Int,
+                Spacing::None),
+                (2,
                 Spacing::Normal)
             )
     },
@@ -174,9 +180,9 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                (GroupSize::Int, 
-                Spacing::Normal), 
-                (2, 
+                (GroupSize::Int,
+                Spacing::Normal),
+                (2,
                 Spacing::Wide)
             )
     },
@@ -191,9 +197,9 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                (GroupSize::Int, 
-                Spacing::None), 
-                (4, 
+                (GroupSize::Int,
+                Spacing::None),
+                (4,
                 Spacing::Normal)
             )
     },
@@ -208,9 +214,9 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                (GroupSize::Long, 
-                Spacing::None), 
-                (2, 
+                (GroupSize::Long,
+                Spacing::None),
+                (2,
                 Spacing::Normal)
             )
     },
@@ -225,9 +231,9 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                (GroupSize::ULong, 
-                Spacing::None), 
-                (2, 
+                (GroupSize::ULong,
+                Spacing::None),
+                (2,
                 Spacing::Normal)
             )
     },

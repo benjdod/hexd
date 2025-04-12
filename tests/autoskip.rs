@@ -1,9 +1,15 @@
-use common::{RenderTestCase, ByteSequence};
+use common::{ByteSequence, RenderTestCase};
 use indoc::indoc;
 
 pub mod common;
 
-use hexd::{options::{GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, Spacing, FlushMode}, IntoHexd};
+use hexd::{
+    options::{
+        FlushMode, GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset,
+        Spacing,
+    },
+    IntoHexd,
+};
 
 fn default_test_options() -> HexdOptions {
     let default_options = HexdOptions {
@@ -13,16 +19,18 @@ fn default_test_options() -> HexdOptions {
         print_ascii: true,
         align: true,
         grouping: Grouping::default(),
-        print_range: HexdRange { skip: 0, limit: None },
+        print_range: HexdRange {
+            skip: 0,
+            limit: None,
+        },
         index_offset: IndexOffset::Relative(0),
-        flush: FlushMode::End
+        flush: FlushMode::End,
     };
     default_options
 }
 
 fn autoskip_test_options() -> HexdOptions {
-    default_test_options()
-        .grouped((GroupSize::Short, Spacing::None), (2, Spacing::Normal))
+    default_test_options().grouped((GroupSize::Short, Spacing::None), (2, Spacing::Normal))
 }
 
 byte_tests! {
@@ -164,7 +172,7 @@ byte_tests! {
         options: default_test_options()
             .range(3..)
     },
-    
+
     simple_range_end: RenderTestCase {
         input: ByteSequence::new(vec![
             (0u8, 32),

@@ -1,4 +1,9 @@
-use std::{convert::Infallible, fmt::Debug, fs::File, io::{Stderr, Stdout, Write}};
+use std::{
+    convert::Infallible,
+    fmt::Debug,
+    fs::File,
+    io::{Stderr, Stdout, Write},
+};
 
 pub trait WriteHexdump: Sized {
     type Error: Debug;

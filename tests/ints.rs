@@ -1,5 +1,5 @@
-use std::vec;
 use indoc::indoc;
+use std::vec;
 
 use hexd::{AsHexdGrouped, IntoHexdGrouped};
 

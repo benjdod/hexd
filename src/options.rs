@@ -1,8 +1,7 @@
 use std::ops::{Bound, RangeBounds};
 
-
 /// Display options for [`Hexd`](crate::Hexd).
-/// 
+///
 /// *Note: these options may be set directly, but the
 /// [`HexdOptionsBuilder`] trait provides a more convenient way to fluently build
 /// options off of a default or a known base set.*
@@ -15,20 +14,20 @@ pub struct HexdOptions {
     /// previous line are skipped.
     /// This is useful for large files with repeating
     /// patterns, such as binary files.
-    /// If false, all lines are printed. 
-    /// 
+    /// If false, all lines are printed.
+    ///
     /// ```rust
     /// use hexd::{AsHexd, options::HexdOptionsBuilder};
-    /// 
+    ///
     /// let v = vec![5u8; 64];
-    /// 
+    ///
     /// let dump = v.hexd().autoskip(true).dump_to::<String>();
     /// assert_eq!(dump, concat!(
     ///     "00000000: 0505 0505 0505 0505 0505 0505 0505 0505 |................|\n",
     ///     "*\n",
     ///     "00000030: 0505 0505 0505 0505 0505 0505 0505 0505 |................|\n",
     /// ));
-    /// 
+    ///
     /// let dump = v.hexd().autoskip(false).dump_to::<String>();
     /// assert_eq!(dump, concat!(
     ///     "00000000: 0505 0505 0505 0505 0505 0505 0505 0505 |................|\n",
@@ -47,21 +46,21 @@ pub struct HexdOptions {
     /// on the right side of the hex values.
     pub print_ascii: bool,
 
-    /// If true and if combined with a [`print_range`](Self::print_range) 
-    /// that does not start on an even group alignment, the hex values are 
+    /// If true and if combined with a [`print_range`](Self::print_range)
+    /// that does not start on an even group alignment, the hex values are
     /// displayed offset.
-    /// 
+    ///
     /// ```rust
     /// use hexd::{AsHexd, options::HexdOptionsBuilder};
-    /// 
+    ///
     /// let v = vec![0u8; 32];
-    /// 
+    ///
     /// let dump = v.hexd().range(7..).aligned(true).dump_to::<String>();
     /// assert_eq!(dump, concat!(
     ///     "00000000:                  00 0000 0000 0000 0000 |       .........|\n",
     ///     "00000010: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n"
     /// ));
-    /// 
+    ///
     /// let dump = v.hexd().range(7..).aligned(false).dump_to::<String>();
     /// assert_eq!(dump, concat!(
     ///     "00000007: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
@@ -72,12 +71,12 @@ pub struct HexdOptions {
 
     /// The grouping options for the hex values. For more information,
     /// see [`Grouping`].
-    /// 
+    ///
     /// ```
     /// use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, GroupSize}};
-    /// 
+    ///
     /// let v = vec![0u8; 64];
-    /// 
+    ///
     /// let dump = v.hexd()
     ///     .range(..16)
     ///     .ungrouped(8, Spacing::Normal)
@@ -86,7 +85,7 @@ pub struct HexdOptions {
     ///    "00000000: 00 00 00 00 00 00 00 00 |........|\n",
     ///    "00000008: 00 00 00 00 00 00 00 00 |........|\n",
     /// ));
-    /// 
+    ///
     /// let dump = v.hexd()
     ///     .range(..16)
     ///     .grouped((GroupSize::Short, Spacing::Normal), (4, Spacing::Wide))
@@ -95,7 +94,7 @@ pub struct HexdOptions {
     ///    "00000000: 00 00  00 00  00 00  00 00  |........|\n",
     ///    "00000008: 00 00  00 00  00 00  00 00  |........|\n",
     /// ));
-    /// 
+    ///
     /// let dump = v.hexd()
     ///     .range(..32)
     ///     .grouped((GroupSize::Int, Spacing::None), (4, Spacing::Normal))
@@ -108,12 +107,12 @@ pub struct HexdOptions {
     pub grouping: Grouping,
 
     /// The range of bytes to print.
-    /// 
+    ///
     /// ```
     /// use hexd::{AsHexd, options::HexdOptionsBuilder};
-    /// 
+    ///
     /// let v = vec![0u8; 256];
-    /// 
+    ///
     /// let dump = v.hexd().range(0x47..0xb3).dump_to::<String>();
     /// assert_eq!(dump, concat!(
     ///     "00000040:                  00 0000 0000 0000 0000 |       .........|\n",
@@ -125,14 +124,14 @@ pub struct HexdOptions {
     /// ```
     pub print_range: HexdRange,
 
-    /// The offset to use for the printed index on the 
+    /// The offset to use for the printed index on the
     /// left side of the hex dump.
-    /// 
+    ///
     /// ```
     /// use hexd::{AsHexd, options::HexdOptionsBuilder};
-    /// 
+    ///
     /// let v = vec![0u8; 256];
-    /// 
+    ///
     /// let dump = v.hexd().range(0x47..0xb3).relative_offset(0xfff0000).dump_to::<String>();
     /// assert_eq!(dump, concat!(
     ///     "0FFF0040:                  00 0000 0000 0000 0000 |       .........|\n",
@@ -141,7 +140,7 @@ pub struct HexdOptions {
     ///     "0FFF00A0: 0000 0000 0000 0000 0000 0000 0000 0000 |................|\n",
     ///     "0FFF00B0: 0000 00                                 |...             |\n",
     /// ));
-    /// 
+    ///
     /// let v = &v[..64];
     /// let dump = v.hexd().absolute_offset(0x201B).dump_to::<String>();
     /// assert_eq!(dump, concat!(
@@ -152,10 +151,10 @@ pub struct HexdOptions {
     /// ```
     pub index_offset: IndexOffset,
 
-    /// Flush behavior to use when writing the hexdump. 
-    /// 
+    /// Flush behavior to use when writing the hexdump.
+    ///
     /// *Note: this is likely only useful when writing to a stream or IO-based output.*
-    pub flush: FlushMode
+    pub flush: FlushMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -163,7 +162,7 @@ pub enum Base {
     Hex,
     Decimal(LeadingZeroChar),
     Octal(LeadingZeroChar),
-    Binary
+    Binary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -182,13 +181,13 @@ pub enum FlushMode {
 
     /// Call [`flush`](method@crate::writer::WriteHexdump::flush) on the writer after all lines
     /// have been written to it.
-    End
+    End,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Endianness {
     BigEndian,
-    LittleEndian
+    LittleEndian,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -196,26 +195,29 @@ pub struct HexdRange {
     /// The number of bytes to skip before printing.
     pub skip: usize,
     /// The number of bytes to print.
-    pub limit: Option<usize>
+    pub limit: Option<usize>,
 }
 
 impl HexdRange {
     /// Return a new instance which includes all bytes.
     pub fn full() -> Self {
-        Self { skip: 0, limit: None }
+        Self {
+            skip: 0,
+            limit: None,
+        }
     }
-    
+
     /// Return a new instance which includes the bytes specified by the range.
     pub fn new<R: RangeBounds<usize>>(r: R) -> Self {
         let skip = match r.start_bound() {
             Bound::Unbounded => 0usize,
             Bound::Included(s) => *s,
-            Bound::Excluded(s) => s + 1
+            Bound::Excluded(s) => s + 1,
         };
         let limit = match r.end_bound() {
             Bound::Unbounded => None,
             Bound::Included(s) => Some(*s + 1),
-            Bound::Excluded(s) => Some(*s)
+            Bound::Excluded(s) => Some(*s),
         };
 
         Self { skip, limit }
@@ -228,11 +230,10 @@ impl HexdRange {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IndexOffset {
     Relative(usize),
-    Absolute(usize)
+    Absolute(usize),
 }
 
 /// This trait controls how bytes are grouped in the hexdump.
@@ -240,17 +241,17 @@ pub enum IndexOffset {
 pub enum Grouping {
     /// No grouping is applied. A total of `byte_count` bytes
     /// are printed with a constant amount of [`spacing`](Spacing) between them.
-    /// 
+    ///
     /// ```
     /// use hexd::{AsHexd, options::{Spacing, HexdOptionsBuilder}};
-    /// 
+    ///
     /// let v = vec![0u8; 16];
     /// let dump = v.hexd().ungrouped(8, Spacing::None).dump_to::<String>();
     /// assert_eq!(dump, concat!(
     ///     "00000000: 0000000000000000 |........|\n",
     ///     "00000008: 0000000000000000 |........|\n",
     /// ));
-    /// 
+    ///
     /// let v = vec![0u8; 16];
     /// let dump = v.hexd().ungrouped(8, Spacing::Normal).dump_to::<String>();
     /// assert_eq!(dump, concat!(
@@ -264,10 +265,7 @@ pub enum Grouping {
     ///     "00000004: 00  00  00  00  |....|\n",
     /// ));
     /// ```
-    Ungrouped {
-        byte_count: usize,
-        spacing: Spacing
-    },
+    Ungrouped { byte_count: usize, spacing: Spacing },
 
     /// The bytes are grouped into `num_groups` of `group_size` bytes each.
     /// The spacing between the bytes in a group is `byte_spacing`,
@@ -276,26 +274,44 @@ pub enum Grouping {
         group_size: GroupSize,
         byte_spacing: Spacing,
         num_groups: usize,
-        group_spacing: Spacing
-    }
+        group_spacing: Spacing,
+    },
 }
 
 impl Grouping {
     pub fn elt_width(&self) -> usize {
         match self {
-            &Grouping::Ungrouped { byte_count, spacing: _ } => byte_count,
-            &Grouping::Grouped { group_size, num_groups, byte_spacing: _, group_spacing: _ } => {
-                group_size.element_count() * num_groups
-            }
+            &Grouping::Ungrouped {
+                byte_count,
+                spacing: _,
+            } => byte_count,
+            &Grouping::Grouped {
+                group_size,
+                num_groups,
+                byte_spacing: _,
+                group_spacing: _,
+            } => group_size.element_count() * num_groups,
         }
     }
 
     pub fn spacing_for_index(&self, index: usize) -> Spacing {
         match self {
-            &Grouping::Ungrouped { byte_count: _, spacing } => spacing,
-            &Grouping::Grouped { group_size, num_groups: _, byte_spacing, group_spacing } => {
+            &Grouping::Ungrouped {
+                byte_count: _,
+                spacing,
+            } => spacing,
+            &Grouping::Grouped {
+                group_size,
+                num_groups: _,
+                byte_spacing,
+                group_spacing,
+            } => {
                 let elt_count = group_size.element_count();
-                if index % elt_count == elt_count - 1 { group_spacing } else { byte_spacing }
+                if index % elt_count == elt_count - 1 {
+                    group_spacing
+                } else {
+                    byte_spacing
+                }
             }
         }
     }
@@ -307,7 +323,7 @@ impl Default for Grouping {
             group_size: GroupSize::Short,
             byte_spacing: Spacing::None,
             num_groups: 8,
-            group_spacing: Spacing::Normal
+            group_spacing: Spacing::Normal,
         }
     }
 }
@@ -318,7 +334,7 @@ pub enum GroupSize {
     Short,
     Int,
     Long,
-    ULong
+    ULong,
 }
 
 impl GroupSize {
@@ -328,7 +344,7 @@ impl GroupSize {
             Self::Short => 2,
             Self::Int => 4,
             Self::Long => 8,
-            Self::ULong => 16
+            Self::ULong => 16,
         }
     }
 }
@@ -336,31 +352,31 @@ impl GroupSize {
 /// This is used to specify the spacing between elements in a dump.
 /// ```rust
 /// use hexd::{AsHexd, options::{Spacing, HexdOptionsBuilder, GroupSize}};
-/// 
+///
 /// let v = vec![0u8; 8];
-/// 
+///
 /// assert_eq!(
 ///     v.hexd().ungrouped(8, Spacing::None).dump_to::<String>(),
 ///     "00000000: 0000000000000000 |........|\n"
 /// );
-/// 
+///
 /// assert_eq!(
 ///     v.hexd().ungrouped(8, Spacing::Normal).dump_to::<String>(),
 ///     "00000000: 00 00 00 00 00 00 00 00 |........|\n"
 /// );
-/// 
+///
 /// let v = &v[..4];
-/// 
+///
 /// assert_eq!(
 ///     v.hexd().ungrouped(4, Spacing::Wide).dump_to::<String>(),
 ///     "00000000: 00  00  00  00  |....|\n"
 /// );
-/// 
+///
 /// assert_eq!(
 ///     v.hexd().ungrouped(4, Spacing::UltraWide).dump_to::<String>(),
 ///     "00000000: 00    00    00    00    |....|\n"
 /// );
-/// 
+///
 /// assert_eq!(
 ///     v.hexd().grouped((GroupSize::Short, Spacing::Normal), (2, Spacing::UltraWide)).dump_to::<String>(),
 ///     "00000000: 00 00    00 00    |....|\n"
@@ -378,7 +394,7 @@ pub enum Spacing {
     Wide,
 
     /// Four spaces (`"    "`) are included between elements.
-    UltraWide
+    UltraWide,
 }
 
 impl Spacing {
@@ -387,13 +403,13 @@ impl Spacing {
             Self::None => &[],
             Self::Normal => " ".as_bytes(),
             Self::Wide => "  ".as_bytes(),
-            Self::UltraWide => "    ".as_bytes()
+            Self::UltraWide => "    ".as_bytes(),
         }
     }
 }
 
 /// The default options for [`Hexd`](crate::Hexd).
-/// 
+///
 /// ```rust,no_run
 /// # use hexd::options::{HexdOptions, HexdRange, Grouping, IndexOffset, FlushMode, Base};
 /// HexdOptions {
@@ -417,9 +433,12 @@ impl Default for HexdOptions {
             print_ascii: true,
             align: true,
             grouping: Grouping::default(),
-            print_range: HexdRange { skip: 0, limit: None },
+            print_range: HexdRange {
+                skip: 0,
+                limit: None,
+            },
             index_offset: IndexOffset::Relative(0),
-            flush: FlushMode::End
+            flush: FlushMode::End,
         }
     }
 }
@@ -439,14 +458,11 @@ pub trait HexdOptionsBuilder: Sized {
     /// Set the base system to use.
     /// This is equivalent to setting the value of the [`base`](HexdOptions::base) field.
     fn base(self, base: Base) -> Self {
-        self.map_options(|o| HexdOptions {
-            base,
-            ..o
-        })
+        self.map_options(|o| HexdOptions { base, ..o })
     }
 
     /// Set the [base system](Base) to hexadecimal and the grouping to the default.
-    /// 
+    ///
     /// ```
     /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, Grouping}};
     /// # let some_vec = vec![0u8; 16];
@@ -460,7 +476,7 @@ pub trait HexdOptionsBuilder: Sized {
 
     /// Set the [base system](Base) to decimal with spaces rendered for leading zeroes.
     /// Set the grouping to 8 equivalently spaced bytes.
-    /// 
+    ///
     /// ```
     /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, LeadingZeroChar}};
     /// # let some_vec = vec![0u8; 16];
@@ -477,7 +493,7 @@ pub trait HexdOptionsBuilder: Sized {
 
     /// Set the [base system](Base) to octal with leading zeroes included.
     /// Set the grouping to 8 equivalently spaced bytes.
-    /// 
+    ///
     /// ```
     /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, LeadingZeroChar}};
     /// # let some_vec = vec![0u8; 16];
@@ -494,7 +510,7 @@ pub trait HexdOptionsBuilder: Sized {
 
     /// Set the [base system](Base) to binary with spaces rendered for leading zeroes.
     /// Set the grouping 4 equivalently spaced bytes.
-    /// 
+    ///
     /// ```
     /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base}};
     /// # let some_vec = vec![0u8; 16];
@@ -503,8 +519,7 @@ pub trait HexdOptionsBuilder: Sized {
     /// some_vec.hexd().base(Base::Binary).ungrouped(4, Spacing::Normal);
     /// ```
     fn binary(self) -> Self {
-        self.base(Base::Binary)
-            .ungrouped(4,Spacing::Normal)
+        self.base(Base::Binary).ungrouped(4, Spacing::Normal)
     }
 
     /// Set a range of bytes to dump.
@@ -517,26 +532,17 @@ pub trait HexdOptionsBuilder: Sized {
     }
     /// Set the value of the [`align`](HexdOptions::align) field.
     fn aligned(self, align: bool) -> Self {
-        self.map_options(|o| HexdOptions {
-            align,
-            ..o
-        })
+        self.map_options(|o| HexdOptions { align, ..o })
     }
 
     /// Set the value of the [`uppercase`](HexdOptions::uppercase) field.
     fn uppercase(self, uppercase: bool) -> Self {
-        self.map_options(|o| HexdOptions {
-            uppercase,
-            ..o
-        })
+        self.map_options(|o| HexdOptions { uppercase, ..o })
     }
 
     /// Set the value of the [`grouping`](field@HexdOptions::grouping) field.
     fn grouping(self, grouping: Grouping) -> Self {
-        self.map_options(|o| HexdOptions {
-            grouping,
-            ..o
-        })
+        self.map_options(|o| HexdOptions { grouping, ..o })
     }
 
     /// Set the value of the [`grouping`](field@HexdOptions::grouping) field to [`Grouping::Ungrouped`]
@@ -545,7 +551,7 @@ pub trait HexdOptionsBuilder: Sized {
         self.map_options(|o| HexdOptions {
             grouping: Grouping::Ungrouped {
                 byte_count: num_bytes,
-                spacing
+                spacing,
             },
             ..o
         })
@@ -553,28 +559,30 @@ pub trait HexdOptionsBuilder: Sized {
 
     /// Set the value of the [`grouping`](field@HexdOptions::grouping) field to [`Grouping::Grouped`]
     /// using the specified parameters.
-    fn grouped(self, (group_size, byte_spacing): (GroupSize, Spacing), (num_groups, group_spacing): (usize, Spacing)) -> Self {
+    fn grouped(
+        self,
+        (group_size, byte_spacing): (GroupSize, Spacing),
+        (num_groups, group_spacing): (usize, Spacing),
+    ) -> Self {
         self.map_options(|o| HexdOptions {
-            grouping: Grouping::Grouped { group_size, num_groups, byte_spacing, group_spacing },
+            grouping: Grouping::Grouped {
+                group_size,
+                num_groups,
+                byte_spacing,
+                group_spacing,
+            },
             ..o
         })
     }
 
-
     /// Set the value of the [`autoskip`](HexdOptions::autoskip) field.
     fn autoskip(self, autoskip: bool) -> Self {
-        self.map_options(|o| HexdOptions {
-            autoskip,
-            ..o
-        })
+        self.map_options(|o| HexdOptions { autoskip, ..o })
     }
 
     /// Set the value of the [`index_offset`](HexdOptions::index_offset) field.
     fn offset(self, index_offset: IndexOffset) -> Self {
-        self.map_options(|o| HexdOptions {
-            index_offset,
-            ..o
-        })
+        self.map_options(|o| HexdOptions { index_offset, ..o })
     }
 
     /// Set the value of the [`index_offset`](HexdOptions::index_offset) field to [`IndexOffset::Relative`].
@@ -595,10 +603,7 @@ pub trait HexdOptionsBuilder: Sized {
 
     /// Set the value of the [`flush`](HexdOptions::flush) field.
     fn flush(self, flush: FlushMode) -> Self {
-        self.map_options(|o| HexdOptions {
-            flush,
-            ..o
-        })
+        self.map_options(|o| HexdOptions { flush, ..o })
     }
 }
 

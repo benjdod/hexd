@@ -1,4 +1,4 @@
-use common::{RenderTestCase, ByteSequence};
+use common::{ByteSequence, RenderTestCase};
 use hexd::options::{FlushMode, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset};
 use indoc::indoc;
 mod common;
@@ -11,9 +11,12 @@ fn default_test_options() -> HexdOptions {
         print_ascii: true,
         align: true,
         grouping: Grouping::default(),
-        print_range: HexdRange { skip: 0, limit: None },
+        print_range: HexdRange {
+            skip: 0,
+            limit: None,
+        },
         index_offset: IndexOffset::Relative(0),
-        flush: FlushMode::End
+        flush: FlushMode::End,
     };
     default_options
 }

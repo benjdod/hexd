@@ -1,4 +1,7 @@
-use hexd::{options::{HexdOptions, HexdOptionsBuilder}, IntoHexd};
+use hexd::{
+    options::{HexdOptions, HexdOptionsBuilder},
+    IntoHexd,
+};
 
 pub struct IntRenderTestCase<T: Copy> {
     pub input: Vec<T>,
@@ -9,12 +12,16 @@ pub struct IntRenderTestCase<T: Copy> {
 pub struct ValSequence<T: Copy> {
     pub ranges: Vec<(T, usize)>,
     pub range_index: usize,
-    pub elt_index: usize
+    pub elt_index: usize,
 }
 
 impl<T: Copy> ValSequence<T> {
     fn new(ranges: Vec<(T, usize)>) -> Self {
-        Self { ranges, range_index: 0, elt_index: 0 }
+        Self {
+            ranges,
+            range_index: 0,
+            elt_index: 0,
+        }
     }
     fn single(val: T, count: usize) -> Self {
         Self::new(vec![(val, count)])
@@ -45,18 +52,22 @@ impl<T: Copy> Iterator for ValSequence<T> {
 pub struct RenderTestCase<T> {
     pub input: T,
     pub output: &'static str,
-    pub options: HexdOptions
+    pub options: HexdOptions,
 }
 
 pub struct ByteSequence {
     pub ranges: Vec<(u8, usize)>,
     pub range_index: usize,
-    pub elt_index: usize
+    pub elt_index: usize,
 }
 
 impl ByteSequence {
     pub fn new(ranges: Vec<(u8, usize)>) -> Self {
-        Self { ranges, range_index: 0, elt_index: 0 }
+        Self {
+            ranges,
+            range_index: 0,
+            elt_index: 0,
+        }
     }
 }
 
@@ -83,10 +94,10 @@ impl Iterator for ByteSequence {
 
 pub fn test_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()> {
     // Given
-    let RenderTestCase { 
-        input, 
-        output, 
-        options 
+    let RenderTestCase {
+        input,
+        output,
+        options,
     } = test;
 
     // When
@@ -97,7 +108,6 @@ pub fn test_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()> 
     similar_asserts::assert_eq!(output, &dump, "hexdump output did not equal expected value");
     Ok(())
 }
-
 
 #[macro_export]
 macro_rules! byte_tests {
