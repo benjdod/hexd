@@ -1,112 +1,163 @@
 use std::vec;
 use indoc::indoc;
 
-use hexd::AsHexdGrouped;
+use hexd::{AsHexdGrouped, IntoHexdGrouped};
 
-pub struct ValSequence<T: Copy> {
-    ranges: Vec<(T, usize)>,
-    range_index: usize,
-    elt_index: usize
-}
+mod common;
+use common::IntRenderTestCase;
 
-impl<T: Copy> ValSequence<T> {
-    fn new(ranges: Vec<(T, usize)>) -> Self {
-        Self { ranges, range_index: 0, elt_index: 0 }
-    }
-    fn single(val: T, count: usize) -> Self {
-        Self::new(vec![(val, count)])
-    }
-}
+macro_rules! ints_tests {
+    ($($as_name:ident, $into_name:ident: $value:expr,)*) => {
+    $(
+        #[test]
+        fn $as_name() {
+            // Given
+            let IntRenderTestCase { input, output, endianness } = $value;
 
-impl<T: Copy> Iterator for ValSequence<T> {
-    type Item = T;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.range_index >= self.ranges.len() {
-            return None;
+            // When
+            let dump = input.as_hexd(endianness).dump_to::<String>();
+
+            // Then
+            similar_asserts::assert_eq!(
+                output,
+                &dump,
+            );
         }
-        let (b, len) = self.ranges[self.range_index];
-        if self.elt_index >= len {
-            self.range_index += 1;
-            self.elt_index = 0;
-            return self.next();
+
+        #[test]
+        fn $into_name() {
+            // Given
+            let IntRenderTestCase { input, output, endianness } = $value;
+
+            // When
+            let dump = input.into_iter().map(|i| i).into_hexd(endianness).dump_to::<String>();
+
+            // Then
+            similar_asserts::assert_eq!(
+                output,
+                &dump,
+            );
         }
-        self.elt_index += 1;
-        Some(b)
-    }
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let sh = self.ranges.iter().map(|(_, len)| len).sum();
-        (sh, Some(sh))
-    }
+    )*
+    };
 }
 
-#[test]
-fn positive_i16_be_is_grouped_correctly() {
-    // Given
-    let v = vec![0x72f0i16; 32];
-
-    // When
-    let dump = v.as_hexd(hexd::options::Endianness::BigEndian).dump_to::<String>();
-
-    // Then
-    similar_asserts::assert_eq!(indoc! {"
+ints_tests! {
+    positive_i16_be_as, positive_i16_be_into: IntRenderTestCase {
+        input: vec![0x72f0i16; 32],
+        output: indoc! {"
             00000000: 72F0 72F0 72F0 72F0 72F0 72F0 72F0 72F0 |r.r.r.r.r.r.r.r.|
             *
             00000030: 72F0 72F0 72F0 72F0 72F0 72F0 72F0 72F0 |r.r.r.r.r.r.r.r.|
         "},
-        &dump,
-    );
-}
-
-#[test]
-fn negative_i16_be_is_grouped_correctly() {
-    // Given
-    let v = vec![-0x79c2i16; 32];
-
-    // When
-    let dump = v.as_hexd(hexd::options::Endianness::BigEndian).dump_to::<String>();
-
-    // Then
-    similar_asserts::assert_eq!(indoc! {"
+        endianness: hexd::options::Endianness::BigEndian,
+    },
+    negative_i16_be_as, negative_i16_be_into: IntRenderTestCase {
+        input: vec![-0x79c2i16; 32],
+        output: indoc! {"
             00000000: 863E 863E 863E 863E 863E 863E 863E 863E |.>.>.>.>.>.>.>.>|
             *
             00000030: 863E 863E 863E 863E 863E 863E 863E 863E |.>.>.>.>.>.>.>.>|
         "},
-        &dump,
-    );
-}
+        endianness: hexd::options::Endianness::BigEndian,
+    },
 
-#[test]
-fn positive_i16_le_is_grouped_correctly() {
-    // Given
-    let v = vec![0x72f0i16; 32];
-
-    // When
-    let dump = v.as_hexd(hexd::options::Endianness::LittleEndian).dump_to::<String>();
-
-    // Then
-    similar_asserts::assert_eq!(indoc! {"
-            00000000: F072 F072 F072 F072 F072 F072 F072 F072 |.r.r.r.r.r.r.r.r|
+    u16_be_as, u16_be_into: IntRenderTestCase {
+        input: vec![0xd2f0u16; 32],
+        output: indoc! {"
+            00000000: D2F0 D2F0 D2F0 D2F0 D2F0 D2F0 D2F0 D2F0 |................|
             *
-            00000030: F072 F072 F072 F072 F072 F072 F072 F072 |.r.r.r.r.r.r.r.r|
+            00000030: D2F0 D2F0 D2F0 D2F0 D2F0 D2F0 D2F0 D2F0 |................|
         "},
-        &dump,
-    );
-}
+        endianness: hexd::options::Endianness::BigEndian,
+    },
 
-#[test]
-fn negative_i16_le_is_grouped_correctly() {
-    // Given
-    let v = vec![-0x79c2i16; 32];
-
-    // When
-    let dump = v.as_hexd(hexd::options::Endianness::LittleEndian).dump_to::<String>();
-
-    // Then
-    similar_asserts::assert_eq!(indoc! {"
-            00000000: 3E86 3E86 3E86 3E86 3E86 3E86 3E86 3E86 |>.>.>.>.>.>.>.>.|
+    positive_i32_be_as, positive_i32_be_into: IntRenderTestCase {
+        input: vec![0x72f072f0i32; 32],
+        output: indoc! {"
+            00000000: 72F072F0 72F072F0 72F072F0 72F072F0 |r.r.r.r.r.r.r.r.|
             *
-            00000030: 3E86 3E86 3E86 3E86 3E86 3E86 3E86 3E86 |>.>.>.>.>.>.>.>.|
+            00000070: 72F072F0 72F072F0 72F072F0 72F072F0 |r.r.r.r.r.r.r.r.|
         "},
-        &dump,
-    );
+        endianness: hexd::options::Endianness::BigEndian,
+    },
+    negative_i32_be_as, negative_i32_be_into: IntRenderTestCase {
+        input: vec![-0x79c279c2i32; 32],
+        output: indoc! {"
+            00000000: 863D863E 863D863E 863D863E 863D863E |.=.>.=.>.=.>.=.>|
+            *
+            00000070: 863D863E 863D863E 863D863E 863D863E |.=.>.=.>.=.>.=.>|
+        "},
+        endianness: hexd::options::Endianness::BigEndian,
+    },
+
+    u32_be_as, u32_be_into: IntRenderTestCase {
+        input: vec![0xd2f0d2f0u32; 32],
+        output: indoc! {"
+            00000000: D2F0D2F0 D2F0D2F0 D2F0D2F0 D2F0D2F0 |................|
+            *
+            00000070: D2F0D2F0 D2F0D2F0 D2F0D2F0 D2F0D2F0 |................|
+        "},
+        endianness: hexd::options::Endianness::BigEndian,
+    },
+
+
+    positive_i64_be_as, positive_i64_be_into: IntRenderTestCase {
+        input: vec![0x72f072f072f072f0i64; 32],
+        output: indoc! {"
+            00000000: 72F072F072F072F0 72F072F072F072F0 |r.r.r.r.r.r.r.r.|
+            *
+            000000F0: 72F072F072F072F0 72F072F072F072F0 |r.r.r.r.r.r.r.r.|
+        "},
+        endianness: hexd::options::Endianness::BigEndian,
+    },
+    negative_i64_be_as, negative_i64_be_into: IntRenderTestCase {
+        input: vec![-0x79c279c279c279c2i64; 32],
+        output: indoc! {"
+            00000000: 863D863D863D863E 863D863D863D863E |.=.=.=.>.=.=.=.>|
+            *
+            000000F0: 863D863D863D863E 863D863D863D863E |.=.=.=.>.=.=.=.>|
+        "},
+        endianness: hexd::options::Endianness::BigEndian,
+    },
+
+    u64_be_as, u64_be_into: IntRenderTestCase {
+        input: vec![0xd2f0d2f0d2f0d2f0u64; 32],
+        output: indoc! {"
+            00000000: D2F0D2F0D2F0D2F0 D2F0D2F0D2F0D2F0 |................|
+            *
+            000000F0: D2F0D2F0D2F0D2F0 D2F0D2F0D2F0D2F0 |................|
+        "},
+        endianness: hexd::options::Endianness::BigEndian,
+    },
+
+
+    positive_i128_be_as, positive_i128_be_into: IntRenderTestCase {
+        input: vec![0x72f072f072f072f072f072f072f072f0i128; 16],
+        output: indoc! {"
+            00000000: 72 F0 72 F0 72 F0 72 F0 72 F0 72 F0 72 F0 72 F0 |r.r.r.r.r.r.r.r.|
+            *
+            000000F0: 72 F0 72 F0 72 F0 72 F0 72 F0 72 F0 72 F0 72 F0 |r.r.r.r.r.r.r.r.|
+        "},
+        endianness: hexd::options::Endianness::BigEndian,
+    },
+    negative_i128_be_as, negative_i128_be_into: IntRenderTestCase {
+        input: vec![-0x79c279c279c279c279c279c279c279c2i128; 16],
+        output: indoc! {"
+            00000000: 86 3D 86 3D 86 3D 86 3D 86 3D 86 3D 86 3D 86 3E |.=.=.=.=.=.=.=.>|
+            *
+            000000F0: 86 3D 86 3D 86 3D 86 3D 86 3D 86 3D 86 3D 86 3E |.=.=.=.=.=.=.=.>|
+        "},
+        endianness: hexd::options::Endianness::BigEndian,
+    },
+
+    u128_be_as, u128_be_into: IntRenderTestCase {
+        input: vec![0xd2f0d2f0d2f0d2f0d2f0d2f0d2f0d2f0u128; 16],
+        output: indoc! {"
+            00000000: D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 |................|
+            *
+            000000F0: D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 |................|
+        "},
+        endianness: hexd::options::Endianness::BigEndian,
+    },
 }

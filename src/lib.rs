@@ -31,7 +31,7 @@
 //! // 00000090: 41414121  2121                         |AAA!!!          |
 //! ```
 
-use std::{backtrace::Backtrace, cmp::{max, min}, fmt::Debug, io::Write};
+use std::{cmp::{max, min}, fmt::Debug, io::Write};
 
 use options::{Endianness, FlushMode, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, LeadingZeroChar, Spacing};
 use reader::{ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader, IteratorByteReader, ReadBytes};
@@ -45,7 +45,6 @@ pub mod reader;
 
 /// The [`WriteHexdump`] trait and several foreign type implementations.
 pub mod writer;
-
 
 trait ToHex {
     fn to_hex_lower(self) -> [u8; 2];
@@ -730,6 +729,9 @@ impl<I: Iterator<Item = u8>> IntoHexd for I {
 pub trait IntoHexdGrouped<const N: usize>: Sized {
     type Output: ReadBytes;
     fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output>;
+    fn hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
+        self.into_hexd(endianness)
+    }
 }
 
 /// This trait can be implemented for reference types to yield
@@ -841,13 +843,37 @@ impl<const N: usize, E: EndianBytes<N>, I: Iterator<Item = E>> IntoHexdGrouped<N
 
     fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
         let reader = GroupedIteratorReader::new(self, endianness);
-        let options = HexdOptions::default()
-            .grouping(Grouping::Grouped { 
+
+        let grouping = match N {
+            2 => Grouping::Grouped { 
                 group_size: options::GroupSize::Short, 
                 byte_spacing: Spacing::None, 
                 num_groups: 8, 
                 group_spacing: Spacing::Normal 
-            });
+            },
+            4 => Grouping::Grouped { 
+                group_size: options::GroupSize::Int, 
+                byte_spacing: Spacing::None, 
+                num_groups: 4, 
+                group_spacing: Spacing::Normal 
+            },
+            8 => Grouping::Grouped { 
+                group_size: options::GroupSize::Long, 
+                byte_spacing: Spacing::None, 
+                num_groups: 2, 
+                group_spacing: Spacing::Normal 
+            },
+            16 => Grouping::Grouped { 
+                group_size: options::GroupSize::ULong, 
+                byte_spacing: Spacing::Normal, 
+                num_groups: 1, 
+                group_spacing: Spacing::Normal 
+            },
+            _ => Grouping::default(),
+        };
+
+        let options = HexdOptions::default()
+            .grouping(grouping);
         Hexd { reader, options }
     }
 }

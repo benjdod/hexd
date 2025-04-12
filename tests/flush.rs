@@ -1,4 +1,4 @@
-use std::{convert::Infallible, sync::Arc, vec};
+use std::{convert::Infallible, vec};
 
 use hexd::{options::HexdOptionsBuilder, writer::WriteHexdump, AsHexd};
 
