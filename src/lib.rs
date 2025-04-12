@@ -1,35 +1,92 @@
 //! # Hexd
 //! Hexd is a simple and configurable hex dump utility for Rust.
 //! 
+//! ## Examples
+//!
+//! Any slice of bytes [can be dumped](AsHexd) with a single line:
 //! ```rust
-//! use hexd::{AsHexd, options::HexdOptionsBuilder, options::{GroupSize, Spacing}};
+//! use hexd::AsHexd;
+//!  
+//! let msg = b"Hello, world! Hopefully you're seeing this in hexd...";
 //! 
-//! let v = b"Hello, world! Hopefully you're seeing this in hexd...";
-//! 
-//! v.hexd().dump();
+//! msg.hexd().dump();
 //! // 00000000: 4865 6C6C 6F2C 2077 6F72 6C64 2120 486F |Hello, world! Ho|
 //! // 00000010: 7065 6675 6C6C 7920 796F 7527 7265 2073 |pefully you're s|
 //! // 00000020: 6565 696E 6720 7468 6973 2069 6E20 6865 |eeing this in he|
 //! // 00000030: 7864 2E2E 2E                            |xd...           |
-//! 
-//! let greeting = concat!(
-//!     "I think I'd like to scream for ice cream! Ready?",
-//!     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-//!     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA!!!"
-//! );
-//! 
-//! greeting.hexd()
-//!     .range(7..)
-//!     .grouped(GroupSize::Int, Spacing::None, 4, Spacing::Wide)
-//!     .dump();
-//! // 00000000:                 20  49276420  6C696B65 |        I'd like|
-//! // 00000010: 20746F20  73637265  616D2066  6F722069 | to scream for i|
-//! // 00000020: 63652063  7265616D  21205265  6164793F |ce cream! Ready?|
-//! // 00000030: 41414141  41414141  41414141  41414141 |AAAAAAAAAAAAAAAA|
-//! // *
-//! // 00000080: 41414141  41414141  41414141  41414141 |AAAAAAAAAAAAAAAA|
-//! // 00000090: 41414121  2121                         |AAA!!!          |
 //! ```
+//! 
+//! Any iterator that yields bytes can be consumed and dumped as well:
+//! ```rust
+//! use hexd::IntoHexd;
+//! 
+//! let msg = b"Hello, world! Hopefully you're seeing this in hexd...";
+//! let iter = msg.into_iter().map(|u| *u + 1);
+//! 
+//! iter.hexd().dump();
+//! // 00000000: 4966 6D6D 702D 2178 7073 6D65 2221 4970 |Ifmmp-!xpsme"!Ip|
+//! // 00000010: 7166 6776 6D6D 7A21 7A70 7628 7366 2174 |qfgvmmz!zpv(sf!t|
+//! // 00000020: 6666 6A6F 6821 7569 6A74 216A 6F21 6966 |ffjoh!uijt!jo!if|
+//! // 00000030: 7965 2F2F 2F                            |ye///           |
+//! ```
+//! 
+//! [Options](options::HexdOptions) are configurable via a [fluent interface](options::HexdOptionsBuilder):
+//! ```rust
+//! use hexd::{AsHexd, options::HexdOptionsBuilder, options::{GroupSize, Spacing}};
+//! 
+//! let v = (0..0x80).collect::<Vec<u8>>();
+//! 
+//! v.hexd()
+//!     .grouped((GroupSize::Int, Spacing::None), (4, Spacing::Normal))
+//!     .uppercase(false)
+//!     .range(0x45..0x7b)
+//!     .relative_offset(0xff0000)
+//!     .dump();
+//! // 00ff0040:            454647 48494a4b 4c4d4e4f |     EFGHIJKLMNO|
+//! // 00ff0050: 50515253 54555657 58595a5b 5c5d5e5f |PQRSTUVWXYZ[\]^_|
+//! // 00ff0060: 60616263 64656667 68696a6b 6c6d6e6f |`abcdefghijklmno|
+//! // 00ff0070: 70717273 74757677 78797a            |pqrstuvwxyz     |
+//! ```
+//! 
+//! Hexdumps can be [written](writer::WriteHexdump) to a variety of targets out of the box:
+//! ```rust,no_run
+//! use hexd::{AsHexd, options::HexdOptionsBuilder};
+//! use std::{fs::{OpenOptions, File}, net::TcpStream};
+//! 
+//! let v = vec![0u8; 16];
+//! 
+//! let f = OpenOptions::new()
+//!     .write(true)
+//!     .open("hexdump.txt")
+//!     .unwrap();
+//! 
+//! let tcp_stream = TcpStream::connect("127.0.0.1:9000").unwrap();
+//! 
+//! v.hexd().dump();
+//! v.hexd().dump_err();
+//! v.hexd().dump_to::<String>();
+//! v.hexd().dump_to::<Vec<u8>>();
+//! v.hexd().dump_into(f).unwrap();
+//! v.hexd().dump_io(tcp_stream).unwrap();
+//! ```
+//! 
+//! All primitive integer types can be dumped with sensible display defaults:
+//! 
+//! ```
+//! use hexd::{AsHexdGrouped, options::Endianness};
+//! 
+//! vec![0x6120u16; 8].as_hexd(Endianness::LittleEndian).dump();
+//! // 00000000: 2061 2061 2061 2061 2061 2061 2061 2061 | a a a a a a a a|
+//! 
+//! vec![0x7fa06120i32; 4].as_hexd_be().dump();
+//! // 00000000: 7FA06120 7FA06120 7FA06120 7FA06120 |..a ..a ..a ..a |
+//! 
+//! vec![0xff3007fa06120u64; 2].as_hexd_le().dump();
+//! // 00000000: 2061A07F00F30F00 2061A07F00F30F00 | a...... a......|
+//! 
+//! vec![0x7fa06120u128; 1].as_hexd_be().dump();
+//! // 00000000: 00 00 00 00 00 00 00 00 00 00 00 00 7F A0 61 20 |..............a |
+//! ``` 
 
 use std::{cmp::{max, min}, fmt::Debug, io::Write};
 
@@ -599,7 +656,11 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
 }
 
 
-/// Yes!
+/// Performs hexdumps.
+/// 
+/// Typically this struct is not constructed directly. Instead,
+/// you can use the [`AsHexd`] or [`IntoHexd`] traits to create a [`Hexd`] instance
+/// from a variety of types.
 pub struct Hexd<R: ReadBytes> {
     reader: R,
     options: HexdOptions
@@ -616,7 +677,7 @@ impl<R: ReadBytes> Hexd<R> {
         Hexd { reader, options }
     }
 
-    /// Print a hexdump. This method is synonymous with [`print`](Hexd::print).
+    /// Print a hexdump to `stdout`. This method is synonymous with [`print`](Hexd::print).
     /// 
     /// ```
     /// use hexd::AsHexd;
@@ -627,6 +688,19 @@ impl<R: ReadBytes> Hexd<R> {
     /// ```
     pub fn dump(self) {
         self.dump_into(std::io::stdout());
+    }
+
+    /// Print a hexdump to `stderr`. This method is synonymous with [`print_err`](Hexd::print_err).
+    /// 
+    /// ```
+    /// use hexd::AsHexd;
+    /// 
+    /// let v = [0u8; 64];
+    /// 
+    /// v.hexd().dump_err(); // print a hexdump to stderr
+    /// ```
+    pub fn dump_err(self) {
+        self.dump_into(std::io::stderr());
     }
 
     /// Construct a default instance of `W` and write a hexdump to it, returning its output.
@@ -728,9 +802,42 @@ impl<I: Iterator<Item = u8>> IntoHexd for I {
 
 pub trait IntoHexdGrouped<const N: usize>: Sized {
     type Output: ReadBytes;
+    /// Construct an instance [`Hexd`] from the current vale
+    /// and the given endianness.
     fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output>;
+
+    /// Construct an instance of [`Hexd`] from
+    /// the current value as big-endian bytes.
+    /// This is equivalent to calling `self.into_hexd(Endianness::BigEndian)`
+    fn into_hexd_be(self) -> Hexd<Self::Output> {
+        self.into_hexd(Endianness::BigEndian)
+    }
+
+    /// Construct an instance of [`Hexd`] from
+    /// the current value as little-endian bytes.
+    /// This is equivalent to calling `self.into_hexd(Endianness::LittleEndian)`
+    fn into_hexd_le(self) -> Hexd<Self::Output> {
+        self.into_hexd(Endianness::LittleEndian)
+    }
+
+    /// Construct an instance [`Hexd`] from the current vale
+    /// and the given endianness.
     fn hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
         self.into_hexd(endianness)
+    }
+
+    /// Construct an instance of [`Hexd`] from
+    /// the current value as big-endian bytes.
+    /// This is equivalent to calling `self.into_hexd(Endianness::BigEndian)`.
+    fn hexd_be(self) -> Hexd<Self::Output> {
+        self.into_hexd(Endianness::BigEndian)
+    }
+
+    /// Construct an instance of [`Hexd`] from
+    /// the current value as little-endian bytes.
+    /// This is equivalent to calling `self.into_hexd(Endianness::LittleEndian)`
+    fn hexd_le(self) -> Hexd<Self::Output> {
+        self.into_hexd(Endianness::LittleEndian)
     }
 }
 
@@ -750,7 +857,43 @@ pub trait AsHexd<'a, R: ReadBytes> {
 }
 
 pub trait AsHexdGrouped<'a, R: ReadBytes> {
+    /// Construct a non-owning [`Hexd`] from a reference of
+    /// the current value and the given endianness.
     fn as_hexd(&'a self, endianness: Endianness) -> Hexd<R>;
+
+    /// Construct a non-owning [`Hexd`] from a reference of
+    /// the current value as big-endian bytes.
+    /// This is equivalent to calling `self.as_hexd(Endianness::BigEndian)`
+    fn as_hexd_be(&'a self) -> Hexd<R> {
+        self.as_hexd(Endianness::BigEndian)
+    }
+
+    /// Construct a non-owning [`Hexd`] from a reference of
+    /// the current value as little-endian bytes.
+    /// This is equivalent to calling `self.as_hexd(Endianness::LittleEndian)`
+    fn as_hexd_le(&'a self) -> Hexd<R> {
+        self.as_hexd(Endianness::LittleEndian)
+    }
+
+    /// Construct a non-owning [`Hexd`] from a reference of
+    /// the current value and the given endianness.
+    fn hexd(&'a self, endianness: Endianness) -> Hexd<R> {
+        self.as_hexd(endianness)
+    }
+
+    /// Construct a non-owning [`Hexd`] from a reference of
+    /// the current value as big-endian bytes.
+    /// This is equivalent to calling `self.as_hexd(Endianness::BigEndian)`
+    fn hexd_be(&'a self) -> Hexd<R> {
+        self.as_hexd(Endianness::BigEndian)
+    }
+
+    /// Construct a non-owning [`Hexd`] from a reference of
+    /// the current value as little-endian bytes.
+    /// This is equivalent to calling `self.as_hexd(Endianness::LittleEndian)`
+    fn hexd_le(&'a self) -> Hexd<R> {
+        self.as_hexd(Endianness::LittleEndian)
+    }
 }
 
 /// Blanket implementation for any type that implements `AsRef<[u8]>`.
@@ -759,7 +902,8 @@ pub trait AsHexdGrouped<'a, R: ReadBytes> {
 /// 
 /// ## Examples
 /// ```
-/// use crate::hexd::AsHexd;
+/// use hexd::AsHexd;
+/// 
 /// let v = vec![0u8; 24];
 /// let x = [0u8; 4];
 /// let s = "greetings earthling!";

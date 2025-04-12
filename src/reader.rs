@@ -42,6 +42,11 @@ impl<'a> ReadBytes for ByteSliceReader<'a> {
     }
 }
 
+/// This trait provides a method to convert
+/// integer types into sized byte arrays.
+/// Under the hood, implementations for primitive integer
+/// types call `to_be_bytes()` or `to_le_bytes()`
+/// depending on the [endianness](crate::options::Endianness).
 pub trait EndianBytes<const N: usize> {
     fn to_bytes(&self, end: Endianness) -> [u8; N];
 }

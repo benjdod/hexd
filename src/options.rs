@@ -89,7 +89,7 @@ pub struct HexdOptions {
     /// 
     /// let dump = v.hexd()
     ///     .range(..16)
-    ///     .grouped(GroupSize::Short, Spacing::Normal, 4, Spacing::Wide)
+    ///     .grouped((GroupSize::Short, Spacing::Normal), (4, Spacing::Wide))
     ///     .dump_to::<String>();
     /// assert_eq!(dump, concat!(
     ///    "00000000: 00 00  00 00  00 00  00 00  |........|\n",
@@ -98,7 +98,7 @@ pub struct HexdOptions {
     /// 
     /// let dump = v.hexd()
     ///     .range(..32)
-    ///     .grouped(GroupSize::Int, Spacing::None, 4, Spacing::Normal)
+    ///     .grouped((GroupSize::Int, Spacing::None), (4, Spacing::Normal))
     ///     .dump_to::<String>();
     /// assert_eq!(dump, concat!(
     ///    "00000000: 00000000 00000000 00000000 00000000 |................|\n",
@@ -362,7 +362,7 @@ impl GroupSize {
 /// );
 /// 
 /// assert_eq!(
-///     v.hexd().grouped(GroupSize::Short, Spacing::Normal, 2, Spacing::UltraWide).dump_to::<String>(),
+///     v.hexd().grouped((GroupSize::Short, Spacing::Normal), (2, Spacing::UltraWide)).dump_to::<String>(),
 ///     "00000000: 00 00    00 00    |....|\n"
 /// );
 /// ```
@@ -394,16 +394,19 @@ impl Spacing {
 
 /// The default options for [`Hexd`](crate::Hexd).
 /// 
-/// ```rust,ignore
+/// ```rust,no_run
+/// # use hexd::options::{HexdOptions, HexdRange, Grouping, IndexOffset, FlushMode, Base};
 /// HexdOptions {
+///     base: Base::Hex,
 ///     autoskip: true,
 ///     uppercase: true,
 ///     print_ascii: true,
 ///     align: true,
 ///     grouping: Grouping::default(),
 ///     print_range: HexdRange { skip: 0, limit: None },
-///     index_offset: IndexOffset::Relative(0)
-/// }
+///     index_offset: IndexOffset::Relative(0),
+///     flush: FlushMode::End
+/// };
 /// ```
 impl Default for HexdOptions {
     fn default() -> Self {
@@ -550,7 +553,7 @@ pub trait HexdOptionsBuilder: Sized {
 
     /// Set the value of the [`grouping`](field@HexdOptions::grouping) field to [`Grouping::Grouped`]
     /// using the specified parameters.
-    fn grouped(self, group_size: GroupSize, byte_spacing: Spacing, num_groups: usize, group_spacing: Spacing) -> Self {
+    fn grouped(self, (group_size, byte_spacing): (GroupSize, Spacing), (num_groups, group_spacing): (usize, Spacing)) -> Self {
         self.map_options(|o| HexdOptions {
             grouping: Grouping::Grouped { group_size, num_groups, byte_spacing, group_spacing },
             ..o

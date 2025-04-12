@@ -91,7 +91,7 @@ byte_tests! {
         "},
         options: default_test_options()
             .autoskip(false)
-            .grouped(GroupSize::Short, Spacing::None, 2, Spacing::Normal)
+            .grouped((GroupSize::Short, Spacing::None), (2, Spacing::Normal))
     },
     grouped_short4_normal_spacing_displays_correctly: RenderTestCase {
         input: ByteSequence::new(vec![
@@ -104,10 +104,10 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                GroupSize::Short, 
-                Spacing::None, 
-                4, 
-                Spacing::Normal
+                (GroupSize::Short, 
+                Spacing::None), 
+                (4, 
+                Spacing::Normal)
             )
     },
     grouped_short4_wide_and_normal_spacing_displays_correctly: RenderTestCase {
@@ -121,10 +121,10 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                GroupSize::Short, 
-                Spacing::Normal, 
-                4, 
-                Spacing::Wide
+                (GroupSize::Short, 
+                Spacing::Normal), 
+                (4, 
+                Spacing::Wide)
             )
     },
 
@@ -140,10 +140,10 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                GroupSize::Short, 
-                Spacing::Normal, 
-                4, 
-                Spacing::None
+                (GroupSize::Short, 
+                Spacing::Normal), 
+                (4, 
+                Spacing::None)
             )
     },
     grouped_int2_normal_spacing_displays_correctly: RenderTestCase {
@@ -157,10 +157,10 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                GroupSize::Int, 
-                Spacing::None, 
-                2, 
-                Spacing::Normal
+                (GroupSize::Int, 
+                Spacing::None), 
+                (2, 
+                Spacing::Normal)
             )
     },
     grouped_int2_wide_and_normal_spacing_displays_correctly: RenderTestCase {
@@ -174,10 +174,10 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                GroupSize::Int, 
-                Spacing::Normal, 
-                2, 
-                Spacing::Wide
+                (GroupSize::Int, 
+                Spacing::Normal), 
+                (2, 
+                Spacing::Wide)
             )
     },
     grouped_int4_normal_spacing_displays_correctly: RenderTestCase {
@@ -191,10 +191,10 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                GroupSize::Int, 
-                Spacing::None, 
-                4, 
-                Spacing::Normal
+                (GroupSize::Int, 
+                Spacing::None), 
+                (4, 
+                Spacing::Normal)
             )
     },
     grouped_long2_normal_spacing_displays_correctly: RenderTestCase {
@@ -208,10 +208,10 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                GroupSize::Long, 
-                Spacing::None, 
-                2, 
-                Spacing::Normal
+                (GroupSize::Long, 
+                Spacing::None), 
+                (2, 
+                Spacing::Normal)
             )
     },
     grouped_ulong2_normal_spacing_displays_correctly: RenderTestCase {
@@ -225,10 +225,10 @@ byte_tests! {
         options: default_test_options()
             .autoskip(false)
             .grouped(
-                GroupSize::ULong, 
-                Spacing::None, 
-                2, 
-                Spacing::Normal
+                (GroupSize::ULong, 
+                Spacing::None), 
+                (2, 
+                Spacing::Normal)
             )
     },
 }

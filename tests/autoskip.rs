@@ -22,7 +22,7 @@ fn default_test_options() -> HexdOptions {
 
 fn autoskip_test_options() -> HexdOptions {
     default_test_options()
-        .grouped(GroupSize::Short, Spacing::None, 2, Spacing::Normal)
+        .grouped((GroupSize::Short, Spacing::None), (2, Spacing::Normal))
 }
 
 byte_tests! {
