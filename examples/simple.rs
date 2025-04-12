@@ -1,7 +1,4 @@
-use hexd::{
-    options::{Endianness, HexdOptionsBuilder},
-    AsHexd, AsHexdGrouped, IntoHexd,
-};
+use hexd::{options::HexdOptionsBuilder, AsHexd, AsHexdGrouped};
 
 fn main() {
     let v = concat!(

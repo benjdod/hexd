@@ -3,12 +3,9 @@ use indoc::indoc;
 
 pub mod common;
 
-use hexd::{
-    options::{
-        FlushMode, GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset,
-        Spacing,
-    },
-    IntoHexd,
+use hexd::options::{
+    FlushMode, GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset,
+    Spacing,
 };
 
 fn default_test_options() -> HexdOptions {

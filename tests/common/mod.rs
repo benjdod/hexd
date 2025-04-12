@@ -3,6 +3,7 @@ use hexd::{
     IntoHexd,
 };
 
+#[allow(dead_code)]
 pub struct IntRenderTestCase<T: Copy> {
     pub input: Vec<T>,
     pub output: &'static str,
@@ -16,6 +17,7 @@ pub struct ValSequence<T: Copy> {
 }
 
 impl<T: Copy> ValSequence<T> {
+    #[allow(dead_code)]
     fn new(ranges: Vec<(T, usize)>) -> Self {
         Self {
             ranges,
@@ -23,6 +25,7 @@ impl<T: Copy> ValSequence<T> {
             elt_index: 0,
         }
     }
+    #[allow(dead_code)]
     fn single(val: T, count: usize) -> Self {
         Self::new(vec![(val, count)])
     }
@@ -49,6 +52,7 @@ impl<T: Copy> Iterator for ValSequence<T> {
     }
 }
 
+#[allow(dead_code)]
 pub struct RenderTestCase<T> {
     pub input: T,
     pub output: &'static str,
@@ -62,6 +66,7 @@ pub struct ByteSequence {
 }
 
 impl ByteSequence {
+    #[allow(dead_code)]
     pub fn new(ranges: Vec<(u8, usize)>) -> Self {
         Self {
             ranges,
@@ -92,6 +97,7 @@ impl Iterator for ByteSequence {
     }
 }
 
+#[allow(dead_code)]
 pub fn test_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()> {
     // Given
     let RenderTestCase {
