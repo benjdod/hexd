@@ -1021,31 +1021,3 @@ impl<const N: usize, E: EndianBytes<N>, I: Iterator<Item = E>> IntoHexdGrouped<N
         Hexd { reader, options }
     }
 }
-
-// macro_rules! into_hexd_grouped {
-//     ($t:ty, $sz:expr, $group_size:expr, $byte_spacing:expr, $num_groups:expr) => {
-//         impl <I: Iterator<Item = $t>> IntoHexdGrouped for I {
-//             type Output = GroupedIteratorReader<$t, I, $sz>;
-//             fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
-//                 let reader = GroupedIteratorReader::new(self, endianness);
-//                 let options = HexdOptions::default()
-//                     .grouping(Grouping::Grouped { 
-//                         group_size: $group_size, 
-//                         byte_spacing: $byte_spacing, 
-//                         num_groups: $num_groups, 
-//                         group_spacing: Spacing::Normal 
-//                     });
-//                 Hexd { reader, options }
-//             }
-//         }
-//     };
-// }
-
-// into_hexd_grouped!(u16, 2, options::GroupSize::Short, Spacing::None, 8);
-// into_hexd_grouped!(i16, 2, options::GroupSize::Short, Spacing::None, 8);
-// into_hexd_grouped!(u32, 4, options::GroupSize::Int, Spacing::None, 4);
-// into_hexd_grouped!(i32, 4, options::GroupSize::Int, Spacing::None, 4);
-// into_hexd_grouped!(u64, 8, options::GroupSize::Long, Spacing::None, 2);
-// into_hexd_grouped!(i64, 8, options::GroupSize::Long, Spacing::None, 2);
-// into_hexd_grouped!(u128, 16, options::GroupSize::ULong, Spacing::Normal, 1);
-// into_hexd_grouped!(i128, 16, options::GroupSize::ULong, Spacing::Normal, 1);
