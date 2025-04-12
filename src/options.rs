@@ -8,6 +8,9 @@ use std::ops::{Bound, RangeBounds};
 /// options off of a default or a known base set.*
 #[derive(Debug, Clone, Copy)]
 pub struct HexdOptions {
+    /// Base system to use
+    pub base: Base,
+
     /// If true, any lines which are repetitions of the
     /// previous line are skipped.
     /// This is useful for large files with repeating
@@ -153,6 +156,21 @@ pub struct HexdOptions {
     /// 
     /// *Note: this is likely only useful when writing to a stream or IO-based output.*
     pub flush: FlushMode
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Base {
+    Hex,
+    Decimal(LeadingZeroChar),
+    Octal(LeadingZeroChar),
+    Binary
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LeadingZeroChar {
+    Space,
+    Zero,
+    Underscore,
 }
 
 /// Control how often [`flush`](method@crate::writer::WriteHexdump::flush) is called on the writer.
@@ -390,6 +408,7 @@ impl Spacing {
 impl Default for HexdOptions {
     fn default() -> Self {
         Self {
+            base: Base::Hex,
             autoskip: true,
             uppercase: true,
             print_ascii: true,
@@ -412,6 +431,77 @@ pub trait HexdOptionsBuilder: Sized {
     /// Return a new instance of `Self` with the given options.
     fn with_options(self, o: HexdOptions) -> Self {
         self.map_options(|_| o)
+    }
+
+    /// Set the base system to use.
+    /// This is equivalent to setting the value of the [`base`](HexdOptions::base) field.
+    fn base(self, base: Base) -> Self {
+        self.map_options(|o| HexdOptions {
+            base,
+            ..o
+        })
+    }
+
+    /// Set the [base system](Base) to hexadecimal and the grouping to the default.
+    /// 
+    /// ```
+    /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, Grouping}};
+    /// # let some_vec = vec![0u8; 16];
+    /// // the following lines are equivalent
+    /// some_vec.hexd().decimal();
+    /// some_vec.hexd().base(Base::Hex).grouping(Grouping::default());
+    /// ```
+    fn hexadecimal(self) -> Self {
+        self.base(Base::Hex).grouping(Grouping::default())
+    }
+
+    /// Set the [base system](Base) to decimal with spaces rendered for leading zeroes.
+    /// Set the grouping to 8 equivalently spaced bytes.
+    /// 
+    /// ```
+    /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, LeadingZeroChar}};
+    /// # let some_vec = vec![0u8; 16];
+    /// // the following lines are equivalent
+    /// some_vec.hexd().decimal();
+    /// some_vec.hexd()
+    ///     .base(Base::Decimal(LeadingZeroChar::Space))
+    ///     .ungrouped(8, Spacing::Normal);
+    /// ```
+    fn decimal(self) -> Self {
+        self.base(Base::Decimal(LeadingZeroChar::Space))
+            .ungrouped(8, Spacing::Normal)
+    }
+
+    /// Set the [base system](Base) to octal with leading zeroes included.
+    /// Set the grouping to 8 equivalently spaced bytes.
+    /// 
+    /// ```
+    /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, LeadingZeroChar}};
+    /// # let some_vec = vec![0u8; 16];
+    /// // the following lines are equivalent
+    /// some_vec.hexd().octal();
+    /// some_vec.hexd()
+    ///     .base(Base::Octal(LeadingZeroChar::Zero))
+    ///     .ungrouped(8, Spacing::Normal);
+    /// ```
+    fn octal(self) -> Self {
+        self.base(Base::Octal(LeadingZeroChar::Zero))
+            .ungrouped(8, Spacing::Normal)
+    }
+
+    /// Set the [base system](Base) to binary with spaces rendered for leading zeroes.
+    /// Set the grouping 4 equivalently spaced bytes.
+    /// 
+    /// ```
+    /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base}};
+    /// # let some_vec = vec![0u8; 16];
+    /// // the following lines are equivalent
+    /// some_vec.hexd().binary();
+    /// some_vec.hexd().base(Base::Binary).ungrouped(4, Spacing::Normal);
+    /// ```
+    fn binary(self) -> Self {
+        self.base(Base::Binary)
+            .ungrouped(4,Spacing::Normal)
     }
 
     /// Set a range of bytes to dump.

@@ -1,3 +1,8 @@
 # Hexd
 
-This is a dead simple tool to dump binary data in rust.
+This is a dead simple library for dumping hex and binary data in rust.
+
+## Features
+
+ - **Zero allocation at runtime**
+ - **Easily configurable**

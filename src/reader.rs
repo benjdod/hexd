@@ -42,7 +42,7 @@ impl<'a> ReadBytes for ByteSliceReader<'a> {
     }
 }
 
-trait EndianBytes<const N: usize> {
+pub trait EndianBytes<const N: usize> {
     fn to_bytes(&self, end: Endianness) -> [u8; N];
 }
 
@@ -285,6 +285,61 @@ impl<I: Iterator<Item = u8>> ReadBytes for IteratorByteReader<I> {
         }
         Ok(n)
     }
+}
+
+pub struct GroupedIteratorReader<U: EndianBytes<N>, I: Iterator<Item = U>, const N: usize> {
+    iterator: I,
+    current: Option<[u8; N]>,
+    index: usize,
+    endianness: Endianness
+}
+
+impl<U: EndianBytes<N>, I: Iterator<Item = U>, const N: usize> GroupedIteratorReader<U, I, N> {
+    pub fn new(mut iterator: I, endianness: Endianness) -> Self {
+        let current = iterator.next().map(|u| u.to_bytes(endianness));
+        Self { iterator, current, index: 0, endianness }
+    }
+
+    pub fn next_byte(&mut self) -> Option<u8> {
+        let b=  self.current.map(|c| c[self.index]);
+        self.index += 1;
+        if self.index >= N {
+            self.index = 0;
+            self.current = self.iterator.next().map(|u| u.to_bytes(self.endianness));
+        }
+        b
+    }
+}
+
+impl<U: EndianBytes<N>, I: Iterator<Item = U>, const N: usize> ReadBytes for GroupedIteratorReader<U, I, N> {
+    type Error = Infallible;
+
+    fn next_n<'buf>(&mut self, buf: &'buf mut[u8]) -> Result<&'buf [u8], Self::Error> {
+        let mut i = 0usize;
+        while i < buf.len() {
+            if let Some(b) = self.next_byte() {
+                buf[i] = b;
+                i += 1;
+            } else {
+                return Ok(&buf[..i]);
+            }
+        }
+        Ok(&buf[..i])
+    }
+
+    fn skip_n(&mut self, n: usize) -> Result<usize, Self::Error> {
+        for _ in 0..n {
+            if self.next_byte().is_none() {
+                return Ok(n);
+            }
+        }
+        Ok(n)
+    }
+
+    fn total_byte_hint(&self) -> Option<usize> {
+        None
+    }
+    
 }
 
 pub trait ReadBytes {

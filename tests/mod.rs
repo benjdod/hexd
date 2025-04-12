@@ -3,6 +3,9 @@ use indoc::indoc;
 #[cfg(test)]
 mod flush;
 
+#[cfg(test)]
+mod ints;
+
 use hexd::{options::{GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, Spacing, FlushMode}, IntoHexd};
 
 fn test_range_byte_case(test: RenderTestCase<ByteSequence>) -> anyhow::Result<()> {
@@ -74,6 +77,7 @@ macro_rules! byte_tests {
 
 fn default_test_options() -> HexdOptions {
     let default_options = HexdOptions {
+        base: hexd::options::Base::Hex,
         autoskip: true,
         uppercase: true,
         print_ascii: true,

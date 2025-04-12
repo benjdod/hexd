@@ -31,10 +31,10 @@
 //! // 00000090: 41414121  2121                         |AAA!!!          |
 //! ```
 
-use std::{cmp::{max, min}, fmt::Debug, io::Write};
+use std::{backtrace::Backtrace, cmp::{max, min}, fmt::Debug, io::Write};
 
-use options::{Endianness, FlushMode, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, Spacing};
-use reader::{ByteSliceReader, GroupedSliceByteReader, IteratorByteReader, ReadBytes};
+use options::{Endianness, FlushMode, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, LeadingZeroChar, Spacing};
+use reader::{ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader, IteratorByteReader, ReadBytes};
 use writer::{WriteHexdump, IOWriter};
 
 /// All [`Hexd`] options.
@@ -81,9 +81,6 @@ fn trunc_ceil_usize(n: usize, trunc: usize) -> usize {
 
 trait HexVisualWidth {
     fn hex_visual_width(&self) -> usize;
-    fn byte_visual_width(&self) -> usize {
-        self.hex_visual_width() / 2
-    }
 }
 
 impl HexVisualWidth for usize {
@@ -455,19 +452,93 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
         self.str_buffer.extend_from_slice(b"*");
     }
 
+    #[inline]
+    fn bchar_for_u8(&self, b: u8) -> u8 {
+        if self.options.uppercase {
+            UPPER_LUT[b as usize]
+        } else {
+            LOWER_LUT[b as usize]
+        }
+    }
+
     fn write_row_bytes(&mut self, row: &RowBuffer) {
         for i in 0..self.options.elt_width() {
-            let [high, low] = match self.read_row_byte_aligned(row, i) {
-                Some(b) => self.u8_to_hex(b),
-                None => [b' ', b' ']
-            };
-            self.str_buffer.push(high);
-            self.str_buffer.push(low);
+            self.write_byte(self.read_row_byte_aligned(row, i));
             self.str_buffer.extend_from_slice(self.options.grouping.spacing_for_index(i).as_spaces());
         }
 
         if self.options.grouping.spacing_for_index(self.options.elt_width() - 1) == Spacing::None {
             self.str_buffer.push(b' ');
+        }
+    }
+
+    fn write_byte(&mut self, b: Option<u8>) {
+        match (self.options.base, b) {
+            (options::Base::Binary, Some(b)) => {
+                let chars = [
+                    self.bchar_for_u8((b >> 7) & 1), 
+                    self.bchar_for_u8((b >> 6) & 1),
+                    self.bchar_for_u8((b >> 5) & 1),
+                    self.bchar_for_u8((b >> 4) & 1),
+                    self.bchar_for_u8((b >> 3) & 1),
+                    self.bchar_for_u8((b >> 2) & 1),
+                    self.bchar_for_u8((b >> 1) & 1),
+                    self.bchar_for_u8((b >> 0) & 1),
+                ];
+                self.str_buffer.extend_from_slice(&chars);
+            },
+            (options::Base::Binary, None) => {
+                self.str_buffer.extend_from_slice(b"        ");
+            }
+
+            (options::Base::Octal(lzc), Some(b)) => {
+                let lead_char: u8 = lzc.into();
+                let cc = [                    
+                    (b >> 6) & 0x7, 
+                    (b >> 3) & 0x7, 
+                    (b >> 0) & 0x7, 
+                ];
+
+                let chars = [
+                    if cc[0] == 0 && cc[1] != 0 { lead_char } else { self.bchar_for_u8(cc[0]) },
+                    if cc[0] == 0 && cc[1] == 0 && cc[2] != 0 { lead_char } else { self.bchar_for_u8(cc[1]) },
+                    self.bchar_for_u8(cc[2]),
+                ];
+                self.str_buffer.extend_from_slice(&chars);
+            },
+            (options::Base::Octal(_), None) => {
+                self.str_buffer.extend_from_slice(b"   ");
+            },
+
+            (options::Base::Decimal(lzc), Some(b)) => {
+                let lead_char: u8 = lzc.into();
+                let cc = [                    
+                    (b / 100) % 10,
+                    (b / 10) % 10,
+                    (b / 1) % 10,
+                ];
+
+                let chars = [
+                    if cc[0] == 0 { lead_char } else { self.bchar_for_u8(cc[0]) },
+                    if cc[0] == 0 && cc[1] == 0 && cc[2] != 0 { lead_char } else { self.bchar_for_u8(cc[1]) },
+                    self.bchar_for_u8(cc[2]),
+                ];
+                self.str_buffer.extend_from_slice(&chars);
+            },
+            (options::Base::Decimal(_), None) => {
+                self.str_buffer.extend_from_slice(b"   ");
+            }
+
+            (options::Base::Hex, Some(b)) => {
+                let chars = [
+                    self.bchar_for_u8((b >> 4) & 0xf), 
+                    self.bchar_for_u8((b >> 0) & 0xf), 
+                ];
+                self.str_buffer.extend_from_slice(&chars);
+            },
+            (options::Base::Hex, None) => {
+                self.str_buffer.extend_from_slice(b"  ");
+            }
         }
     }
 
@@ -627,6 +698,16 @@ impl<R: ReadBytes> HexdOptionsBuilder for Hexd<R> {
     }
 }
 
+impl From<LeadingZeroChar> for u8 {
+    fn from(value: LeadingZeroChar) -> Self {
+        match value {
+            LeadingZeroChar::Space => b' ',
+            LeadingZeroChar::Underscore => b'_',
+            LeadingZeroChar::Zero => b'0'
+        }
+    }
+}
+
 /// This trait yields an owning version of [`Hexd`].
 pub trait IntoHexd: Sized {
     type Output: ReadBytes;
@@ -644,6 +725,11 @@ impl<I: Iterator<Item = u8>> IntoHexd for I {
             options: HexdOptions::default()
         }
     }
+}
+
+pub trait IntoHexdGrouped<const N: usize>: Sized {
+    type Output: ReadBytes;
+    fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output>;
 }
 
 /// This trait can be implemented for reference types to yield
@@ -696,10 +782,65 @@ impl<'a, T: AsRef<[i8]>> AsHexd<'a, GroupedSliceByteReader<'a, i8, 1>> for T {
     }
 }
 
-impl <'a, T: AsRef<[u16]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u16, 2>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u16, 2>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
+macro_rules! as_hexd_grouped {
+    ($t:ty, $sz:expr, $group_size:expr, $byte_spacing:expr, $num_groups:expr) => {
+        impl <'a, T: AsRef<[$t]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, $t, $sz>> for T {
+            fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, $t, $sz>> {
+                let slice = self.as_ref();
+                let reader = GroupedSliceByteReader::new(slice, endianness);
+                let options = HexdOptions::default()
+                    .grouping(Grouping::Grouped { 
+                        group_size: $group_size, 
+                        byte_spacing: $byte_spacing, 
+                        num_groups: $num_groups, 
+                        group_spacing: Spacing::Normal 
+                    });
+                Hexd { reader, options }
+            }
+        }
+    };
+}
+
+as_hexd_grouped!(u16, 2, options::GroupSize::Short, Spacing::None, 8);
+as_hexd_grouped!(i16, 2, options::GroupSize::Short, Spacing::None, 8);
+as_hexd_grouped!(u32, 4, options::GroupSize::Int, Spacing::None, 4);
+as_hexd_grouped!(i32, 4, options::GroupSize::Int, Spacing::None, 4);
+as_hexd_grouped!(u64, 8, options::GroupSize::Long, Spacing::None, 2);
+as_hexd_grouped!(i64, 8, options::GroupSize::Long, Spacing::None, 2);
+as_hexd_grouped!(u128, 16, options::GroupSize::ULong, Spacing::Normal, 1);
+as_hexd_grouped!(i128, 16, options::GroupSize::ULong, Spacing::Normal, 1);
+
+// trait Gg<U: EndianBytes<N>, I: Iterator<Item = U>, const N: usize> {
+//     fn adapt(self) -> GroupedIteratorReader<U, I, N>;
+//     fn default_grouping(&self) -> Grouping;
+// }
+
+// impl <U: EndianBytes<N>, I: Iterator<Item = U>, const N: usize> Gg<U, I, N> for GroupedIteratorReader<U, I, N> {
+//     fn adapt(self) -> GroupedIteratorReader<U, I, N> {
+//         self
+//     }
+//     fn default_grouping(&self) -> Grouping {
+//         Grouping::Grouped { group_size: options::GroupSize::Long, byte_spacing: Spacing::None, num_groups: 2, group_spacing: Spacing::Normal }
+//     }
+// }
+
+// impl <T: Gg<U, I, N>, U: EndianBytes<N>, I: Iterator<Item = U>, const N: usize> IntoHexdGrouped for T {
+//     type Output = GroupedIteratorReader<U, I, N>;
+
+//     fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
+//         let reader = self.adapt();
+//         let options = HexdOptions::default()
+//             .grouping(self.default_grouping())
+//             .endianness(endianness);
+//         Hexd { reader, options }
+//     }
+// }
+
+impl<const N: usize, E: EndianBytes<N>, I: Iterator<Item = E>> IntoHexdGrouped<N> for I {
+    type Output = GroupedIteratorReader<E, I, N>;
+
+    fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
+        let reader = GroupedIteratorReader::new(self, endianness);
         let options = HexdOptions::default()
             .grouping(Grouping::Grouped { 
                 group_size: options::GroupSize::Short, 
@@ -711,107 +852,30 @@ impl <'a, T: AsRef<[u16]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u16, 2>>
     }
 }
 
-impl <'a, T: AsRef<[i16]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i16, 2>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i16, 2>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
-        let options = HexdOptions::default()
-            .grouping(Grouping::Grouped { 
-                group_size: options::GroupSize::Short, 
-                byte_spacing: Spacing::None, 
-                num_groups: 8, 
-                group_spacing: Spacing::Normal 
-            });
-        Hexd { reader, options }
-    }
-}
+// macro_rules! into_hexd_grouped {
+//     ($t:ty, $sz:expr, $group_size:expr, $byte_spacing:expr, $num_groups:expr) => {
+//         impl <I: Iterator<Item = $t>> IntoHexdGrouped for I {
+//             type Output = GroupedIteratorReader<$t, I, $sz>;
+//             fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
+//                 let reader = GroupedIteratorReader::new(self, endianness);
+//                 let options = HexdOptions::default()
+//                     .grouping(Grouping::Grouped { 
+//                         group_size: $group_size, 
+//                         byte_spacing: $byte_spacing, 
+//                         num_groups: $num_groups, 
+//                         group_spacing: Spacing::Normal 
+//                     });
+//                 Hexd { reader, options }
+//             }
+//         }
+//     };
+// }
 
-impl <'a, T: AsRef<[u32]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u32, 4>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u32, 4>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
-        let options = HexdOptions::default()
-            .grouping(Grouping::Grouped { 
-                group_size: options::GroupSize::Int, 
-                byte_spacing: Spacing::None, 
-                num_groups: 4, 
-                group_spacing: Spacing::Normal 
-            });
-        Hexd { reader, options }
-    }
-}
-
-impl <'a, T: AsRef<[i32]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i32, 4>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i32, 4>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
-        let options = HexdOptions::default()
-            .grouping(Grouping::Grouped { 
-                group_size: options::GroupSize::Int, 
-                byte_spacing: Spacing::None, 
-                num_groups: 4, 
-                group_spacing: Spacing::Normal 
-            });
-        Hexd { reader, options }
-    }
-}
-
-impl <'a, T: AsRef<[u64]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u64, 8>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u64, 8>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
-        let options = HexdOptions::default()
-            .grouping(Grouping::Grouped { 
-                group_size: options::GroupSize::Long, 
-                byte_spacing: Spacing::None, 
-                num_groups: 2, 
-                group_spacing: Spacing::Normal 
-            });
-        Hexd { reader, options }
-    }
-}
-
-impl <'a, T: AsRef<[i64]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i64, 8>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i64, 8>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
-        let options = HexdOptions::default()
-            .grouping(Grouping::Grouped { 
-                group_size: options::GroupSize::Long, 
-                byte_spacing: Spacing::None, 
-                num_groups: 2, 
-                group_spacing: Spacing::Normal 
-            });
-        Hexd { reader, options }
-    }
-}
-
-impl <'a, T: AsRef<[u128]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, u128, 16>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, u128, 16>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
-        let options = HexdOptions::default()
-            .grouping(Grouping::Grouped { 
-                group_size: options::GroupSize::ULong, 
-                byte_spacing: Spacing::Normal, 
-                num_groups: 1, 
-                group_spacing: Spacing::Normal 
-            });
-        Hexd { reader, options }
-    }
-}
-
-impl <'a, T: AsRef<[i128]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, i128, 16>> for T {
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, i128, 16>> {
-        let slice = self.as_ref();
-        let reader = GroupedSliceByteReader::new(slice, endianness);
-        let options = HexdOptions::default()
-            .grouping(Grouping::Grouped { 
-                group_size: options::GroupSize::ULong, 
-                byte_spacing: Spacing::Normal, 
-                num_groups: 1, 
-                group_spacing: Spacing::Normal 
-            });
-        Hexd { reader, options }
-    }
-}
+// into_hexd_grouped!(u16, 2, options::GroupSize::Short, Spacing::None, 8);
+// into_hexd_grouped!(i16, 2, options::GroupSize::Short, Spacing::None, 8);
+// into_hexd_grouped!(u32, 4, options::GroupSize::Int, Spacing::None, 4);
+// into_hexd_grouped!(i32, 4, options::GroupSize::Int, Spacing::None, 4);
+// into_hexd_grouped!(u64, 8, options::GroupSize::Long, Spacing::None, 2);
+// into_hexd_grouped!(i64, 8, options::GroupSize::Long, Spacing::None, 2);
+// into_hexd_grouped!(u128, 16, options::GroupSize::ULong, Spacing::Normal, 1);
+// into_hexd_grouped!(i128, 16, options::GroupSize::ULong, Spacing::Normal, 1);

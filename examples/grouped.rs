@@ -1,4 +1,4 @@
-use hexd::{AsHexdGrouped, options::Endianness};
+use hexd::{options::Endianness, AsHexdGrouped, IntoHexdGrouped};
 
 fn main() {
     let v = vec![0xf2f0u16; 32];
