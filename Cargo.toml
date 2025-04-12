@@ -2,6 +2,11 @@
 name = "hexd"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "A simple and configurable hexdump library"
+homepage = "https://github.com/benjdod/hexd"
+repository = "https://github.com/benjdod/hexd"
+readme = "README.md"
 
 [dev-dependencies]
 anyhow = "1.0"
