@@ -1,4 +1,4 @@
-use hexd::{
+use hxd::{
     options::{HexdOptions, HexdOptionsBuilder},
     IntoHexd,
 };
@@ -7,7 +7,7 @@ use hexd::{
 pub struct IntRenderTestCase<T: Copy> {
     pub input: Vec<T>,
     pub output: &'static str,
-    pub endianness: hexd::options::Endianness,
+    pub endianness: hxd::options::Endianness,
 }
 
 pub struct ValSequence<T: Copy> {

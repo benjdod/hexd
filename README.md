@@ -1,18 +1,18 @@
 # Hexd
 
-A simple and configurable hexdump library for Rust.
+A simple, configurable and dependency-free hexdump library for Rust.
 
 ## Installation
 
 ```
-cargo install hexd
+cargo install hxd
 ```
 
 ## Examples
 
 Any slice of bytes [can be dumped](AsHexd) with a single line:
 ```rust
-use hexd::AsHexd;
+use hxd::AsHexd;
  
 let msg = b"Hello, world! Hopefully you're seeing this in hexd...";
 
@@ -25,7 +25,7 @@ msg.hexd().dump();
 
 Any iterator that yields bytes can be consumed and dumped as well:
 ```rust
-use hexd::IntoHexd;
+use hxd::IntoHexd;
 
 let msg = b"Hello, world! Hopefully you're seeing this in hexd...";
 let iter = msg.into_iter().map(|u| *u + 1);
@@ -39,7 +39,7 @@ iter.hexd().dump();
 
 [Options](options::HexdOptions) are configurable via a [fluent interface](options::HexdOptionsBuilder):
 ```rust
-use hexd::{AsHexd, options::HexdOptionsBuilder, options::{GroupSize, Spacing}};
+use hxd::{AsHexd, options::HexdOptionsBuilder, options::{GroupSize, Spacing}};
 
 let v = (0..0x80).collect::<Vec<u8>>();
 
@@ -57,7 +57,7 @@ v.hexd()
 
 Hexdumps can be [written](writer::WriteHexdump) to a variety of targets out of the box:
 ```rust
-use hexd::{AsHexd, options::HexdOptionsBuilder};
+use hxd::{AsHexd, options::HexdOptionsBuilder};
 use std::{fs::{OpenOptions, File}, net::TcpStream};
 
 let v = vec![0u8; 16];
@@ -80,7 +80,7 @@ v.hexd().dump_io(tcp_stream).unwrap();
 All primitive integer types can be dumped with sensible display defaults:
 
 ```rust
-use hexd::{AsHexdGrouped, options::Endianness};
+use hxd::{AsHexdGrouped, options::Endianness};
 
 vec![0x6120u16; 8].as_hexd(Endianness::LittleEndian).dump();
 // 00000000: 2061 2061 2061 2061 2061 2061 2061 2061 | a a a a a a a a|

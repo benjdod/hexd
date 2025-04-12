@@ -3,14 +3,14 @@ use indoc::indoc;
 
 pub mod common;
 
-use hexd::options::{
+use hxd::options::{
     FlushMode, GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset,
     Spacing,
 };
 
 fn default_test_options() -> HexdOptions {
     let default_options = HexdOptions {
-        base: hexd::options::Base::Hex,
+        base: hxd::options::Base::Hex,
         autoskip: true,
         uppercase: true,
         print_ascii: true,

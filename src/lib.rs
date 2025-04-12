@@ -1,11 +1,11 @@
 //! # Hexd
-//! Hexd is a simple and configurable hex dump utility for Rust.
+//! Hexd is a simple, configurable and dependency-free hexdump utility for Rust.
 //!
 //! ## Examples
 //!
 //! Any slice of bytes [can be dumped](AsHexd) with a single line:
 //! ```rust
-//! use hexd::AsHexd;
+//! use hxd::AsHexd;
 //!  
 //! let msg = b"Hello, world! Hopefully you're seeing this in hexd...";
 //!
@@ -18,7 +18,7 @@
 //!
 //! Any iterator that yields bytes can be consumed and dumped as well:
 //! ```rust
-//! use hexd::IntoHexd;
+//! use hxd::IntoHexd;
 //!
 //! let msg = b"Hello, world! Hopefully you're seeing this in hexd...";
 //! let iter = msg.into_iter().map(|u| *u + 1);
@@ -32,7 +32,7 @@
 //!
 //! [Options](options::HexdOptions) are configurable via a [fluent interface](options::HexdOptionsBuilder):
 //! ```rust
-//! use hexd::{AsHexd, options::HexdOptionsBuilder, options::{GroupSize, Spacing}};
+//! use hxd::{AsHexd, options::HexdOptionsBuilder, options::{GroupSize, Spacing}};
 //!
 //! let v = (0..0x80).collect::<Vec<u8>>();
 //!
@@ -50,7 +50,7 @@
 //!
 //! Hexdumps can be [written](writer::WriteHexdump) to a variety of targets out of the box:
 //! ```rust,no_run
-//! use hexd::{AsHexd, options::HexdOptionsBuilder};
+//! use hxd::{AsHexd, options::HexdOptionsBuilder};
 //! use std::{fs::{OpenOptions, File}, net::TcpStream};
 //!
 //! let v = vec![0u8; 16];
@@ -73,7 +73,7 @@
 //! All primitive integer types can be dumped with sensible display defaults:
 //!
 //! ```
-//! use hexd::{AsHexdGrouped, options::Endianness};
+//! use hxd::{AsHexdGrouped, options::Endianness};
 //!
 //! vec![0x6120u16; 8].as_hexd(Endianness::LittleEndian).dump();
 //! // 00000000: 2061 2061 2061 2061 2061 2061 2061 2061 | a a a a a a a a|
@@ -765,7 +765,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// Print a hexdump to `stdout`. This method is synonymous with [`print`](Hexd::print).
     ///
     /// ```
-    /// use hexd::AsHexd;
+    /// use hxd::AsHexd;
     ///
     /// let v = [0u8; 64];
     ///
@@ -778,7 +778,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// Print a hexdump to `stderr`. This method is synonymous with [`print_err`](Hexd::print_err).
     ///
     /// ```
-    /// use hexd::AsHexd;
+    /// use hxd::AsHexd;
     ///
     /// let v = [0u8; 64];
     ///
@@ -791,7 +791,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// Construct a default instance of `W` and write a hexdump to it, returning its output.
     ///
     /// ```
-    /// use hexd::AsHexd;
+    /// use hxd::AsHexd;
     ///
     /// let dump = [0u8; 64].hexd().dump_to::<String>();
     /// ```
@@ -803,7 +803,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// Write a hexdump to an instance of `W` and return its output.
     ///
     /// ```
-    /// use hexd::AsHexd;
+    /// use hxd::AsHexd;
     ///
     /// let v: Vec<String> = Vec::new();
     /// let dump = [0u8; 64].hexd().dump_into(v);
@@ -816,7 +816,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// Write a hexdump to an object that implements `std::io::Write`.
     ///
     /// ```no_run
-    /// use hexd::AsHexd;
+    /// use hxd::AsHexd;
     /// use std::fs::OpenOptions;
     ///
     /// let v = [0u8; 64];
@@ -987,7 +987,7 @@ pub trait AsHexdGrouped<'a, R: ReadBytes> {
 ///
 /// ## Examples
 /// ```
-/// use hexd::AsHexd;
+/// use hxd::AsHexd;
 ///
 /// let v = vec![0u8; 24];
 /// let x = [0u8; 4];

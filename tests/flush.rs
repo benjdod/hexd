@@ -1,6 +1,6 @@
 use std::{convert::Infallible, vec};
 
-use hexd::{options::HexdOptionsBuilder, writer::WriteHexdump, AsHexd};
+use hxd::{options::HexdOptionsBuilder, writer::WriteHexdump, AsHexd};
 
 struct FlushTester(Vec<usize>, usize);
 
@@ -40,8 +40,8 @@ fn test_flush_after_n_lines() {
     let flushes = v
         .hexd()
         .autoskip(false)
-        .ungrouped(8, hexd::options::Spacing::None)
-        .flush(hexd::options::FlushMode::AfterNLines(4))
+        .ungrouped(8, hxd::options::Spacing::None)
+        .flush(hxd::options::FlushMode::AfterNLines(4))
         .dump_to::<FlushTester>();
 
     // Then
@@ -57,8 +57,8 @@ fn test_flush_at_eof() {
     let flushes = v
         .hexd()
         .autoskip(false)
-        .ungrouped(8, hexd::options::Spacing::None)
-        .flush(hexd::options::FlushMode::End)
+        .ungrouped(8, hxd::options::Spacing::None)
+        .flush(hxd::options::FlushMode::End)
         .dump_to::<FlushTester>();
 
     // Then

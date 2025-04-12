@@ -1,4 +1,4 @@
-use hexd::{options::HexdOptionsBuilder, AsHexd, AsHexdGrouped};
+use hxd::{options::HexdOptionsBuilder, AsHexd, AsHexdGrouped};
 
 fn main() {
     let v = concat!(

@@ -17,7 +17,7 @@ pub struct HexdOptions {
     /// If false, all lines are printed.
     ///
     /// ```rust
-    /// use hexd::{AsHexd, options::HexdOptionsBuilder};
+    /// use hxd::{AsHexd, options::HexdOptionsBuilder};
     ///
     /// let v = vec![5u8; 64];
     ///
@@ -51,7 +51,7 @@ pub struct HexdOptions {
     /// displayed offset.
     ///
     /// ```rust
-    /// use hexd::{AsHexd, options::HexdOptionsBuilder};
+    /// use hxd::{AsHexd, options::HexdOptionsBuilder};
     ///
     /// let v = vec![0u8; 32];
     ///
@@ -73,7 +73,7 @@ pub struct HexdOptions {
     /// see [`Grouping`].
     ///
     /// ```
-    /// use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, GroupSize}};
+    /// use hxd::{AsHexd, options::{HexdOptionsBuilder, Spacing, GroupSize}};
     ///
     /// let v = vec![0u8; 64];
     ///
@@ -109,7 +109,7 @@ pub struct HexdOptions {
     /// The range of bytes to print.
     ///
     /// ```
-    /// use hexd::{AsHexd, options::HexdOptionsBuilder};
+    /// use hxd::{AsHexd, options::HexdOptionsBuilder};
     ///
     /// let v = vec![0u8; 256];
     ///
@@ -128,7 +128,7 @@ pub struct HexdOptions {
     /// left side of the hex dump.
     ///
     /// ```
-    /// use hexd::{AsHexd, options::HexdOptionsBuilder};
+    /// use hxd::{AsHexd, options::HexdOptionsBuilder};
     ///
     /// let v = vec![0u8; 256];
     ///
@@ -243,7 +243,7 @@ pub enum Grouping {
     /// are printed with a constant amount of [`spacing`](Spacing) between them.
     ///
     /// ```
-    /// use hexd::{AsHexd, options::{Spacing, HexdOptionsBuilder}};
+    /// use hxd::{AsHexd, options::{Spacing, HexdOptionsBuilder}};
     ///
     /// let v = vec![0u8; 16];
     /// let dump = v.hexd().ungrouped(8, Spacing::None).dump_to::<String>();
@@ -351,7 +351,7 @@ impl GroupSize {
 
 /// This is used to specify the spacing between elements in a dump.
 /// ```rust
-/// use hexd::{AsHexd, options::{Spacing, HexdOptionsBuilder, GroupSize}};
+/// use hxd::{AsHexd, options::{Spacing, HexdOptionsBuilder, GroupSize}};
 ///
 /// let v = vec![0u8; 8];
 ///
@@ -411,7 +411,7 @@ impl Spacing {
 /// The default options for [`Hexd`](crate::Hexd).
 ///
 /// ```rust,no_run
-/// # use hexd::options::{HexdOptions, HexdRange, Grouping, IndexOffset, FlushMode, Base};
+/// # use hxd::options::{HexdOptions, HexdRange, Grouping, IndexOffset, FlushMode, Base};
 /// HexdOptions {
 ///     base: Base::Hex,
 ///     autoskip: true,
@@ -464,7 +464,7 @@ pub trait HexdOptionsBuilder: Sized {
     /// Set the [base system](Base) to hexadecimal and the grouping to the default.
     ///
     /// ```
-    /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, Grouping}};
+    /// # use hxd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, Grouping}};
     /// # let some_vec = vec![0u8; 16];
     /// // the following lines are equivalent
     /// some_vec.hexd().decimal();
@@ -478,7 +478,7 @@ pub trait HexdOptionsBuilder: Sized {
     /// Set the grouping to 8 equivalently spaced bytes.
     ///
     /// ```
-    /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, LeadingZeroChar}};
+    /// # use hxd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, LeadingZeroChar}};
     /// # let some_vec = vec![0u8; 16];
     /// // the following lines are equivalent
     /// some_vec.hexd().decimal();
@@ -495,7 +495,7 @@ pub trait HexdOptionsBuilder: Sized {
     /// Set the grouping to 8 equivalently spaced bytes.
     ///
     /// ```
-    /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, LeadingZeroChar}};
+    /// # use hxd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base, LeadingZeroChar}};
     /// # let some_vec = vec![0u8; 16];
     /// // the following lines are equivalent
     /// some_vec.hexd().octal();
@@ -512,7 +512,7 @@ pub trait HexdOptionsBuilder: Sized {
     /// Set the grouping 4 equivalently spaced bytes.
     ///
     /// ```
-    /// # use hexd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base}};
+    /// # use hxd::{AsHexd, options::{HexdOptionsBuilder, Spacing, Base}};
     /// # let some_vec = vec![0u8; 16];
     /// // the following lines are equivalent
     /// some_vec.hexd().binary();

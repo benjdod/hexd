@@ -1,7 +1,7 @@
 use indoc::indoc;
 use std::vec;
 
-use hexd::{AsHexdGrouped, IntoHexdGrouped};
+use hxd::{AsHexdGrouped, IntoHexdGrouped};
 
 mod common;
 use common::IntRenderTestCase;
@@ -50,7 +50,7 @@ ints_tests! {
             *
             00000030: 72F0 72F0 72F0 72F0 72F0 72F0 72F0 72F0 |r.r.r.r.r.r.r.r.|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
     negative_i16_be_as, negative_i16_be_into: IntRenderTestCase {
         input: vec![-0x79c2i16; 32],
@@ -59,7 +59,7 @@ ints_tests! {
             *
             00000030: 863E 863E 863E 863E 863E 863E 863E 863E |.>.>.>.>.>.>.>.>|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
 
     u16_be_as, u16_be_into: IntRenderTestCase {
@@ -69,7 +69,7 @@ ints_tests! {
             *
             00000030: D2F0 D2F0 D2F0 D2F0 D2F0 D2F0 D2F0 D2F0 |................|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
 
     positive_i32_be_as, positive_i32_be_into: IntRenderTestCase {
@@ -79,7 +79,7 @@ ints_tests! {
             *
             00000070: 72F072F0 72F072F0 72F072F0 72F072F0 |r.r.r.r.r.r.r.r.|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
     negative_i32_be_as, negative_i32_be_into: IntRenderTestCase {
         input: vec![-0x79c279c2i32; 32],
@@ -88,7 +88,7 @@ ints_tests! {
             *
             00000070: 863D863E 863D863E 863D863E 863D863E |.=.>.=.>.=.>.=.>|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
 
     u32_be_as, u32_be_into: IntRenderTestCase {
@@ -98,7 +98,7 @@ ints_tests! {
             *
             00000070: D2F0D2F0 D2F0D2F0 D2F0D2F0 D2F0D2F0 |................|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
 
 
@@ -109,7 +109,7 @@ ints_tests! {
             *
             000000F0: 72F072F072F072F0 72F072F072F072F0 |r.r.r.r.r.r.r.r.|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
     negative_i64_be_as, negative_i64_be_into: IntRenderTestCase {
         input: vec![-0x79c279c279c279c2i64; 32],
@@ -118,7 +118,7 @@ ints_tests! {
             *
             000000F0: 863D863D863D863E 863D863D863D863E |.=.=.=.>.=.=.=.>|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
 
     u64_be_as, u64_be_into: IntRenderTestCase {
@@ -128,7 +128,7 @@ ints_tests! {
             *
             000000F0: D2F0D2F0D2F0D2F0 D2F0D2F0D2F0D2F0 |................|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
 
 
@@ -139,7 +139,7 @@ ints_tests! {
             *
             000000F0: 72 F0 72 F0 72 F0 72 F0 72 F0 72 F0 72 F0 72 F0 |r.r.r.r.r.r.r.r.|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
     negative_i128_be_as, negative_i128_be_into: IntRenderTestCase {
         input: vec![-0x79c279c279c279c279c279c279c279c2i128; 16],
@@ -148,7 +148,7 @@ ints_tests! {
             *
             000000F0: 86 3D 86 3D 86 3D 86 3D 86 3D 86 3D 86 3D 86 3E |.=.=.=.=.=.=.=.>|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
 
     u128_be_as, u128_be_into: IntRenderTestCase {
@@ -158,6 +158,6 @@ ints_tests! {
             *
             000000F0: D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 D2 F0 |................|
         "},
-        endianness: hexd::options::Endianness::BigEndian,
+        endianness: hxd::options::Endianness::BigEndian,
     },
 }

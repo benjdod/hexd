@@ -1,11 +1,11 @@
 use common::{ByteSequence, RenderTestCase};
-use hexd::options::{FlushMode, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset};
+use hxd::options::{FlushMode, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset};
 use indoc::indoc;
 mod common;
 
 fn default_test_options() -> HexdOptions {
     let default_options = HexdOptions {
-        base: hexd::options::Base::Hex,
+        base: hxd::options::Base::Hex,
         autoskip: true,
         uppercase: true,
         print_ascii: true,
@@ -97,6 +97,6 @@ byte_tests! {
         "},
         options: default_test_options()
             .decimal()
-            .base(hexd::options::Base::Decimal(hexd::options::LeadingZeroChar::Underscore))
+            .base(hxd::options::Base::Decimal(hxd::options::LeadingZeroChar::Underscore))
     },
 }
