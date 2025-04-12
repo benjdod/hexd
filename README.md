@@ -5,7 +5,7 @@ A simple, configurable and dependency-free hexdump library for Rust.
 ## Installation
 
 ```
-cargo install hxd
+cargo add hxd
 ```
 
 ## Examples
