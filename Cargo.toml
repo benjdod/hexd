@@ -1,9 +1,9 @@
 [package]
 name = "hxd"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
-description = "A simple and configurable hexdump library"
+description = "A simple, configurable and dependency-free hexdump library"
 homepage = "https://github.com/benjdod/hexd"
 repository = "https://github.com/benjdod/hexd"
 readme = "README.md"
