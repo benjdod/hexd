@@ -10,7 +10,7 @@ cargo install hxd
 
 ## Examples
 
-Any slice of bytes [can be dumped](AsHexd) with a single line:
+Any slice of bytes [can be dumped](https://docs.rs/hxd/0.1.0/hxd/trait.AsHexd.html) with a single line:
 ```rust
 use hxd::AsHexd;
  
@@ -23,7 +23,7 @@ msg.hexd().dump();
 // 00000030: 7864 2E2E 2E                            |xd...           |
 ```
 
-Any iterator that yields bytes can be consumed and dumped as well:
+Any iterator that yields bytes can be [consumed and dumped](https://docs.rs/hxd/0.1.0/hxd/trait.IntoHexd.html) as well:
 ```rust
 use hxd::IntoHexd;
 
@@ -37,7 +37,9 @@ iter.hexd().dump();
 // 00000030: 7965 2F2F 2F                            |ye///           |
 ```
 
-[Options](options::HexdOptions) are configurable via a [fluent interface](options::HexdOptionsBuilder):
+[Options](https://docs.rs/hxd/0.1.0/hxd/options/struct.HexdOptions.html) are configurable 
+via a [fluent interface](https://docs.rs/hxd/0.1.0/hxd/options/trait.HexdOptionsBuilder.html):
+
 ```rust
 use hxd::{AsHexd, options::HexdOptionsBuilder, options::{GroupSize, Spacing}};
 
@@ -55,7 +57,9 @@ v.hexd()
 // 00ff0070: 70717273 74757677 78797a            |pqrstuvwxyz     |
 ```
 
-Hexdumps can be [written](writer::WriteHexdump) to a variety of targets out of the box:
+Hexdumps can be [written](https://docs.rs/hxd/0.1.0/hxd/writer/trait.WriteHexdump.html) 
+to a variety of targets out of the box:
+
 ```rust
 use hxd::{AsHexd, options::HexdOptionsBuilder};
 use std::{fs::{OpenOptions, File}, net::TcpStream};
@@ -77,7 +81,8 @@ v.hexd().dump_into(f).unwrap();
 v.hexd().dump_io(tcp_stream).unwrap();
 ```
 
-All primitive integer types can be dumped with sensible display defaults:
+All primitive integer types [can be dumped](https://docs.rs/hxd/0.1.0/hxd/trait.AsHexdGrouped.html)
+with sensible display defaults:
 
 ```rust
 use hxd::{AsHexdGrouped, options::Endianness};
