@@ -150,11 +150,6 @@ pub struct HexdOptions {
     /// ));
     /// ```
     pub index_offset: IndexOffset,
-
-    /// Flush behavior to use when writing the hexdump.
-    ///
-    /// *Note: this is likely only useful when writing to a stream or IO-based output.*
-    pub flush: FlushMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -170,18 +165,6 @@ pub enum LeadingZeroChar {
     Space,
     Zero,
     Underscore,
-}
-
-/// Control how often [`flush`](method@crate::writer::WriteHexdump::flush) is called on the writer.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum FlushMode {
-    /// Call [`flush`](method@crate::writer::WriteHexdump::flush) on the writer after `n` lines
-    /// have been written to it.
-    AfterNLines(usize),
-
-    /// Call [`flush`](method@crate::writer::WriteHexdump::flush) on the writer after all lines
-    /// have been written to it.
-    End,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -411,7 +394,7 @@ impl Spacing {
 /// The default options for [`Hexd`](crate::Hexd).
 ///
 /// ```rust,no_run
-/// # use hxd::options::{HexdOptions, HexdRange, Grouping, IndexOffset, FlushMode, Base};
+/// # use hxd::options::{HexdOptions, HexdRange, Grouping, IndexOffset, Base};
 /// HexdOptions {
 ///     base: Base::Hex,
 ///     autoskip: true,
@@ -420,8 +403,7 @@ impl Spacing {
 ///     align: true,
 ///     grouping: Grouping::default(),
 ///     print_range: HexdRange { skip: 0, limit: None },
-///     index_offset: IndexOffset::Relative(0),
-///     flush: FlushMode::End
+///     index_offset: IndexOffset::Relative(0)
 /// };
 /// ```
 impl Default for HexdOptions {
@@ -438,7 +420,6 @@ impl Default for HexdOptions {
                 limit: None,
             },
             index_offset: IndexOffset::Relative(0),
-            flush: FlushMode::End,
         }
     }
 }
@@ -599,11 +580,6 @@ pub trait HexdOptionsBuilder: Sized {
             index_offset: IndexOffset::Absolute(offset),
             ..o
         })
-    }
-
-    /// Set the value of the [`flush`](HexdOptions::flush) field.
-    fn flush(self, flush: FlushMode) -> Self {
-        self.map_options(|o| HexdOptions { flush, ..o })
     }
 }
 

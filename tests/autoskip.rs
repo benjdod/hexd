@@ -4,8 +4,7 @@ use indoc::indoc;
 pub mod common;
 
 use hxd::options::{
-    FlushMode, GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset,
-    Spacing,
+    GroupSize, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset, Spacing,
 };
 
 fn default_test_options() -> HexdOptions {
@@ -21,7 +20,6 @@ fn default_test_options() -> HexdOptions {
             limit: None,
         },
         index_offset: IndexOffset::Relative(0),
-        flush: FlushMode::End,
     };
     default_options
 }

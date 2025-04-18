@@ -1,5 +1,5 @@
 use common::{ByteSequence, RenderTestCase};
-use hxd::options::{FlushMode, Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset};
+use hxd::options::{Grouping, HexdOptions, HexdOptionsBuilder, HexdRange, IndexOffset};
 use indoc::indoc;
 mod common;
 
@@ -16,7 +16,6 @@ fn default_test_options() -> HexdOptions {
             limit: None,
         },
         index_offset: IndexOffset::Relative(0),
-        flush: FlushMode::End,
     };
     default_options
 }
