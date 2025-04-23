@@ -1,6 +1,6 @@
 //! # Hexd
 //! Hexd is a simple, configurable and dependency-free hexdump utility for Rust.
-//!
+//! 
 //! ## Examples
 //!
 //! Any slice of bytes [can be dumped](AsHexd) with a single line:
@@ -55,14 +55,14 @@
 //!
 //! let mut s = String::from("My hexdump:\n");
 //! 
-//! let v = vec![0u8; 16];
-//!
 //! let f = OpenOptions::new()
 //!     .write(true)
 //!     .open("hexdump.txt")
 //!     .unwrap();
 //!
 //! let tcp_stream = TcpStream::connect("127.0.0.1:9000").unwrap();
+//! 
+//! let v = vec![0u8; 16];
 //!
 //! v.hexd().dump();
 //! v.hexd().dump_err();
