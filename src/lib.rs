@@ -53,7 +53,7 @@
 //! use hxd::{AsHexd, options::HexdOptionsBuilder};
 //! use std::{fs::{OpenOptions, File}, net::TcpStream};
 //!
-//! let v = vec![0u8; 16];
+//! let mut s = String::from("My hexdump:\n");
 //!
 //! let f = OpenOptions::new()
 //!     .write(true)
@@ -62,11 +62,14 @@
 //!
 //! let tcp_stream = TcpStream::connect("127.0.0.1:9000").unwrap();
 //!
+//! let v = vec![0u8; 16];
+//!
 //! v.hexd().dump();
 //! v.hexd().dump_err();
 //! v.hexd().dump_to::<String>();
-//! v.hexd().dump_to::<Vec<u8>>();
-//! v.hexd().dump_into(f).unwrap();
+//! v.hexd().dump_to::<Vec<String>>();
+//! v.hexd().dump_into(s);
+//! v.hexd().dump_io(f).unwrap();
 //! v.hexd().dump_io(tcp_stream).unwrap();
 //! ```
 //!
@@ -95,8 +98,7 @@ use std::{
 };
 
 use options::{
-    Endianness, FlushMode, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, LeadingZeroChar,
-    Spacing,
+    Endianness, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, LeadingZeroChar, Spacing,
 };
 use reader::{
     ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader,
@@ -242,7 +244,7 @@ impl RowBuffer {
     }
 }
 
-const MAX_BUFFER_SIZE: usize = 4096;
+const MAX_BUFFER_SIZE: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum HexdumpLineIteratorState {
@@ -431,7 +433,7 @@ struct HexdumpLineWriter<R: ReadBytes, W: WriteHexdump> {
     line_iterator: HexdumpLineIterator<R>,
     writer: W,
     elided_row: Option<(RowBuffer, usize)>,
-    str_buffer: StackBuffer<256>,
+    str_buffer: StackBuffer<512>,
     options: HexdOptions,
     flush_idx: usize,
 }
@@ -443,7 +445,7 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
             line_iterator,
             writer,
             elided_row: None,
-            str_buffer: StackBuffer::<256>::new(),
+            str_buffer: StackBuffer::<512>::new(),
             options,
             flush_idx: 0,
         }
@@ -454,17 +456,7 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
         let ll = match r {
             Ok(_) => Ok(self.writer),
             Err(e) => Err(e),
-        }
-        .and_then(|mut w| {
-            if let FlushMode::End = self.options.flush {
-                match w.flush() {
-                    Ok(_) => Ok(w),
-                    Err(e) => Err(e),
-                }
-            } else {
-                Ok(w)
-            }
-        });
+        };
         WriteHexdump::consume(ll)
     }
 
@@ -516,12 +508,6 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
             self.write_row_ascii(&elided_row);
             self.flush_line()?;
         };
-
-        if let FlushMode::AfterNLines(n) = self.options.flush {
-            if n > 0 && self.flush_idx % n != 0 {
-                self.writer.flush()?;
-            }
-        }
 
         Ok(())
     }
@@ -722,16 +708,11 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
         }
         let s = self.str_buffer.as_str();
         if s.len() > 0 {
-            self.writer.write_line(s)?;
+            self.writer.write_str(s)?;
+            self.writer.line_end()?;
         }
 
         self.flush_idx += 1;
-
-        if let FlushMode::AfterNLines(n) = self.options.flush {
-            if n > 0 && self.flush_idx % n == 0 {
-                self.writer.flush()?;
-            }
-        }
 
         self.str_buffer.clear();
         Ok(())
@@ -772,7 +753,8 @@ impl<R: ReadBytes> Hexd<R> {
     /// v.hexd().dump(); // print a hexdump
     /// ```
     pub fn dump(self) {
-        self.dump_into(std::io::stdout());
+        self.dump_io(std::io::stdout())
+            .expect("could not print hexdump to stdout");
     }
 
     /// Print a hexdump to `stderr`. This method is synonymous with [`print_err`](Hexd::print_err).
@@ -785,7 +767,8 @@ impl<R: ReadBytes> Hexd<R> {
     /// v.hexd().dump_err(); // print a hexdump to stderr
     /// ```
     pub fn dump_err(self) {
-        self.dump_into(std::io::stderr());
+        self.dump_io(std::io::stderr())
+            .expect("could not print hexdump to stderr");
     }
 
     /// Construct a default instance of `W` and write a hexdump to it, returning its output.
@@ -813,7 +796,9 @@ impl<R: ReadBytes> Hexd<R> {
         hlw.do_hexdump()
     }
 
-    /// Write a hexdump to an object that implements `std::io::Write`.
+    /// Write a hexdump to an object that is [Write].
+    /// The object is wrapped in a [BufWriter](std::io::BufWriter)
+    /// for improved performance.
     ///
     /// ```no_run
     /// use hxd::AsHexd;
@@ -830,18 +815,44 @@ impl<R: ReadBytes> Hexd<R> {
     /// v.hexd().dump_io(f).expect("could not write hexdump to file");
     /// ```
     pub fn dump_io<W: Write>(self, write: W) -> Result<(), std::io::Error> {
-        let hlw = HexdumpLineWriter::new(self.reader, IOWriter(write), self.options);
+        let hlw = HexdumpLineWriter::new(self.reader, IOWriter::new(write), self.options);
+        hlw.do_hexdump()
+    }
+
+    /// Write a hexdump to an object that is [Write].
+    /// Unlike [`Self::dump_io`], this method does not wrap the object in a
+    /// [BufWriter](std::io::BufWriter).
+    ///
+    /// ```no_run
+    /// use hxd::AsHexd;
+    /// use std::fs::OpenOptions;
+    ///
+    /// let v = [0u8; 64];
+    ///
+    /// let f = OpenOptions::new()
+    ///     .write(true)
+    ///     .create(true)
+    ///     .open("hexdump.txt")
+    ///     .unwrap();
+    ///
+    /// v.hexd().dump_io(f).expect("could not write hexdump to file");
+    /// ```
+    pub fn dump_io_unbuffered<W: Write>(self, write: W) -> Result<(), std::io::Error> {
+        let hlw =
+            HexdumpLineWriter::new(self.reader, IOWriter::new_unbuffered(write), self.options);
         hlw.do_hexdump()
     }
 
     /// Print a hexdump to [`stdout`](std::io::Stdout). This method is synonymous with [`print`](Hexd::print).
     pub fn print(self) {
-        self.dump_into(std::io::stdout());
+        self.dump_io(std::io::stdout())
+            .expect("could not print hexdump to stdout");
     }
 
     /// Print a hexdump to [`stderr`](std::io::Stderr).
     pub fn print_err(self) {
-        self.dump_into(std::io::stderr());
+        self.dump_io(std::io::stderr())
+            .expect("could not print hexdump to stderr");
     }
 }
 

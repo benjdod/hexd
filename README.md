@@ -64,14 +64,14 @@ to a variety of targets out of the box:
 use hxd::{AsHexd, options::HexdOptionsBuilder};
 use std::{fs::{OpenOptions, File}, net::TcpStream};
 
-let v = vec![0u8; 16];
-
 let f = OpenOptions::new()
     .write(true)
     .open("hexdump.txt")
     .unwrap();
 
 let tcp_stream = TcpStream::connect("127.0.0.1:9000").unwrap();
+
+let v = vec![0u8; 16];
 
 v.hexd().dump();
 v.hexd().dump_err();
