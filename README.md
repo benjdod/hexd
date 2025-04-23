@@ -4,7 +4,7 @@ A simple, configurable and dependency-free hexdump library for Rust.
 
 ## Installation
 
-```
+```sh
 cargo add hxd
 ```
 
@@ -60,7 +60,7 @@ v.hexd()
 Hexdumps can be [written](https://docs.rs/hxd/0.1.0/hxd/writer/trait.WriteHexdump.html) 
 to a variety of targets out of the box:
 
-```rust
+```rust,no_run
 use hxd::{AsHexd, options::HexdOptionsBuilder};
 use std::{fs::{OpenOptions, File}, net::TcpStream};
 
@@ -77,7 +77,7 @@ v.hexd().dump();
 v.hexd().dump_err();
 v.hexd().dump_to::<String>();
 v.hexd().dump_to::<Vec<u8>>();
-v.hexd().dump_into(f).unwrap();
+v.hexd().dump_io(f).unwrap();
 v.hexd().dump_io(tcp_stream).unwrap();
 ```
 
