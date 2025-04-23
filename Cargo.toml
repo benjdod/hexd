@@ -7,6 +7,8 @@ description = "A simple, configurable and dependency-free hexdump library"
 homepage = "https://github.com/benjdod/hexd"
 repository = "https://github.com/benjdod/hexd"
 readme = "README.md"
+keywords = ["inspection", "hexdump", "xxd", "binary"]
+categories = ["encoding", "development-tools", "development-tools::debugging", "visualization"]
 
 [dev-dependencies]
 anyhow = "1.0"
