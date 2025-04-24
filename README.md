@@ -25,6 +25,20 @@
 
 Hexd is a debugging library that allows you to easily write hexdumps. It aims to be lightweight, easily within reach, and usable by default.
 
+```rust
+use hxd::AsHexd;
+let s = "A convenient, configurable, and dependency-free hexdump library for Rust.";
+s.hexd().dump();
+```
+
+```text
+00000000: 4120 636F 6E76 656E 6965 6E74 2C20 636F |A convenient, co|
+00000010: 6E66 6967 7572 6162 6C65 2C20 616E 6420 |nfigurable, and |
+00000020: 6465 7065 6E64 656E 6379 2D66 7265 6520 |dependency-free |
+00000030: 6865 7864 756D 7020 6C69 6272 6172 7920 |hexdump library |
+00000040: 666F 7220 5275 7374 2E                  |for Rust.       |
+```
+
 ## Features
 
  - Convenient: Hexd tries to be "at your fingerprints" by exposing [blanket conversion traits](https://docs.rs/hxd/latest/hxd/trait.AsHexd.html) and an intuitive [builder-based options API](https://docs.rs/hxd/latest/hxd/options/trait.HexdOptionsBuilder.html).
