@@ -139,3 +139,7 @@ vec![0xff3007fa06120u64; 2].as_hexd_le().dump();
 vec![0x7fa06120u128; 1].as_hexd_be().dump();
 // 00000000: 00 00 00 00 00 00 00 00 00 00 00 00 7F A0 61 20 |..............a |
 ```
+
+## License
+
+This project is licensed under the [MIT license](https://github.com/benjdod/hexd/blob/master/LICENSE.txt).
