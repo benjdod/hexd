@@ -44,7 +44,11 @@ pub struct HexdOptions {
 
     /// If true, an ASCII representation of the bytes is printed
     /// on the right side of the hex values.
-    pub print_ascii: bool,
+    pub show_ascii: bool,
+
+    /// If true, a hexidecimal index of the bytes is printed
+    /// to the left of the hex dump.
+    pub show_index: bool,
 
     /// If true and if combined with a [`print_range`](Self::print_range)
     /// that does not start on an even group alignment, the hex values are
@@ -399,7 +403,8 @@ impl Spacing {
 ///     base: Base::Hex,
 ///     autoskip: true,
 ///     uppercase: true,
-///     print_ascii: true,
+///     show_index: true,
+///     show_ascii: true,
 ///     align: true,
 ///     grouping: Grouping::default(),
 ///     print_range: HexdRange { skip: 0, limit: None },
@@ -412,7 +417,8 @@ impl Default for HexdOptions {
             base: Base::Hex,
             autoskip: true,
             uppercase: true,
-            print_ascii: true,
+            show_ascii: true,
+            show_index: true,
             align: true,
             grouping: Grouping::default(),
             print_range: HexdRange {
@@ -511,6 +517,17 @@ pub trait HexdOptionsBuilder: Sized {
             ..o
         })
     }
+
+    /// Set the value of the [`show_ascii`](HexdOptions::show_ascii) field.
+    fn show_ascii(self, show_ascii: bool) -> Self {
+        self.map_options(|o| HexdOptions { show_ascii, ..o })
+    }
+
+    /// Set the value of the [`show_index`](HexdOptions::show_index) field.
+    fn show_index(self, show_index: bool) -> Self {
+        self.map_options(|o| HexdOptions { show_index, ..o })
+    }
+
     /// Set the value of the [`align`](HexdOptions::align) field.
     fn aligned(self, align: bool) -> Self {
         self.map_options(|o| HexdOptions { align, ..o })
