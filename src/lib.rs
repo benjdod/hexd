@@ -431,6 +431,10 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
     }
 
     fn write_row_index(&mut self, row_index: usize) {
+        if !self.options.show_index {
+            return;
+        }
+
         let v_index = match self.options.index_offset {
             IndexOffset::Absolute(o) => {
                 row_index - min(row_index, self.options.print_range.skip) + o
@@ -478,13 +482,16 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
     }
 
     fn write_row_bytes(&mut self, row: &RowBuffer) {
-        for i in 0..self.options.elt_width() {
+        let elt_width = self.options.elt_width();
+        for i in 0..elt_width {
             self.write_byte(self.read_row_byte_aligned(row, i));
-            self.str_buffer
-                .extend_from_slice(self.options.grouping.spacing_for_index(i).as_spaces());
+            if i != elt_width - 1 || self.options.show_ascii {
+                self.str_buffer
+                    .extend_from_slice(self.options.grouping.spacing_for_index(i).as_spaces());
+            }
         }
 
-        if self
+        if self.options.show_ascii && self
             .options
             .grouping
             .spacing_for_index(self.options.elt_width() - 1)
@@ -592,7 +599,10 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
 
     #[inline]
     fn write_row_ascii(&mut self, row: &RowBuffer) {
-        // self.str_buffer.push(b' ');
+        if !self.options.show_ascii {
+            return;
+        }
+
         self.str_buffer.push(b'|');
         for i in 0..self.options.elt_width() {
             let b = self.read_row_byte_aligned(row, i).unwrap_or(b' ');

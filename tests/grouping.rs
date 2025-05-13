@@ -11,7 +11,8 @@ fn default_test_options() -> HexdOptions {
         base: hxd::options::Base::Hex,
         autoskip: true,
         uppercase: true,
-        print_ascii: true,
+        show_index: true,
+        show_ascii: true,
         align: true,
         grouping: Grouping::default(),
         print_range: HexdRange {
