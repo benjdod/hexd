@@ -1,17 +1,14 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
-    cmp::{max, min},
-    fmt::Debug,
-    io::Write,
+    cmp::{max, min}, fmt::Debug, io::Write
 };
 
 use options::{
     Endianness, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, LeadingZeroChar, Spacing,
 };
 use reader::{
-    ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader,
-    IteratorByteReader, ReadBytes,
+    ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader, IoReader, IteratorByteReader, ReadBytes
 };
 use writer::{IOWriter, WriteHexdump};
 
@@ -232,14 +229,13 @@ impl<'a, R: ReadBytes> HexdumpLineIterator<R> {
         }
     }
 
-    fn read_into_buffer(&mut self, len: usize) -> RowBuffer {
+    fn read_into_buffer(&mut self, len: usize) -> Result<RowBuffer, R::Error> {
         let mut buffer = StackBuffer::<MAX_BUFFER_SIZE>::new();
 
         let actually_read_len = {
             let n = self
                 .reader
-                .next_n(&mut buffer.as_mut_slice()[..len])
-                .unwrap();
+                .next_n(&mut buffer.as_mut_slice()[..len])?;
             n.len()
         };
 
@@ -253,7 +249,7 @@ impl<'a, R: ReadBytes> HexdumpLineIterator<R> {
         };
         self.index += actually_read_len;
         self.state = HexdumpLineIteratorState::InProgress;
-        o
+        Ok(o)
     }
 
     fn calculate_row_index(&self) -> usize {
@@ -271,7 +267,7 @@ enum LineIteratorResult {
 }
 
 impl<R: ReadBytes> Iterator for HexdumpLineIterator<R> {
-    type Item = LineIteratorResult;
+    type Item = Result<LineIteratorResult, R::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let st = self.state;
@@ -313,10 +309,16 @@ impl<R: ReadBytes> Iterator for HexdumpLineIterator<R> {
                 self.state = HexdumpLineIteratorState::InProgress;
                 let rowbuffer = self.read_into_buffer(read_len);
 
+                if let Err(e) = rowbuffer {
+                    return Some(Err(e));
+                }
+
+                let rowbuffer = rowbuffer.unwrap();
+
                 if self.options.autoskip {
                     if let Some(em) = &self.elision_match {
                         if em.matches(&rowbuffer, &self.options) {
-                            return Some(LineIteratorResult::Elided(rowbuffer));
+                            return Some(Ok(LineIteratorResult::Elided(rowbuffer)));
                         } else {
                             self.elision_match = None;
                         }
@@ -327,7 +329,7 @@ impl<R: ReadBytes> Iterator for HexdumpLineIterator<R> {
                     }
                 }
                 if rowbuffer.length > 0 {
-                    Some(LineIteratorResult::Row(rowbuffer))
+                    Some(Ok(LineIteratorResult::Row(rowbuffer)))
                 } else {
                     self.state = HexdumpLineIteratorState::Completed;
                     None
@@ -347,6 +349,11 @@ struct HexdumpLineWriter<R: ReadBytes, W: WriteHexdump> {
     flush_idx: usize,
 }
 
+enum HexdError<R, W> {
+    Read(R),
+    Write(W)
+}
+
 impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
     fn new(reader: R, writer: W, options: HexdOptions) -> Self {
         let line_iterator = HexdumpLineIterator::new(reader, options.clone());
@@ -364,14 +371,16 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
         let r = self.do_hexdump_internal();
         let ll = match r {
             Ok(_) => Ok(self.writer),
-            Err(e) => Err(e),
+            Err(HexdError::Write(e)) => Err(e),
+            _ => panic!("unimplemented")
         };
         WriteHexdump::consume(ll)
     }
 
-    fn do_hexdump_internal(&mut self) -> Result<(), W::Error> {
+    fn do_hexdump_internal(&mut self) -> Result<(), HexdError<R::Error, W::Error>> {
         let mut i = 0usize;
         while let Some(r) = self.line_iterator.next() {
+            let r = r.map_err(HexdError::Read)?;
             match r {
                 LineIteratorResult::Row(r) => {
                     if self.elided_row.is_some() {
@@ -621,14 +630,14 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
     }
 
     #[inline]
-    fn flush_line(&mut self) -> Result<(), W::Error> {
+    fn flush_line(&mut self) -> Result<(), HexdError<R::Error, W::Error>> {
         if self.str_buffer.len > 0 {
             self.str_buffer.push(b'\n');
         }
         let s = self.str_buffer.as_str();
         if s.len() > 0 {
-            self.writer.write_str(s)?;
-            self.writer.line_end()?;
+            self.writer.write_str(s).map_err(HexdError::Write)?;
+            self.writer.line_end().map_err(HexdError::Write)?;
         }
 
         self.flush_idx += 1;
@@ -797,19 +806,26 @@ impl From<LeadingZeroChar> for u8 {
 }
 
 /// This trait yields an owning version of [`Hexd`].
-pub trait IntoHexd: Sized {
-    type Output: ReadBytes;
-    fn into_hexd(self) -> Hexd<Self::Output>;
-    fn hexd(self) -> Hexd<Self::Output> {
+pub trait IntoHexd<R: ReadBytes>: Sized {
+    fn into_hexd(self) -> Hexd<R>;
+    fn hexd(self) -> Hexd<R> {
         self.into_hexd()
     }
 }
 
-impl<I: Iterator<Item = u8>> IntoHexd for I {
-    type Output = IteratorByteReader<I>;
-    fn into_hexd(self) -> Hexd<Self::Output> {
+impl<I: Iterator<Item = u8>> IntoHexd<IteratorByteReader<I>> for I {
+    fn into_hexd(self) -> Hexd<IteratorByteReader<I>> {
         Hexd {
             reader: IteratorByteReader::new(self),
+            options: HexdOptions::default(),
+        }
+    }
+}
+
+impl<R: std::io::Read> IntoHexd<IoReader<R>> for R {
+    fn into_hexd(self) -> Hexd<IoReader<R>> {
+        Hexd {
+            reader: IoReader::new(self),
             options: HexdOptions::default(),
         }
     }

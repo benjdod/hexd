@@ -1,4 +1,4 @@
-use std::{cmp::min, convert::Infallible, fmt::Debug};
+use std::{cmp::min, convert::Infallible, fmt::Debug, io::Read};
 
 use crate::Endianness;
 
@@ -433,5 +433,35 @@ impl<'b, T: Iterator<Item = &'b u8>> ReadBytes for T {
             (lower, None) if lower > 0 => Some(lower),
             _ => None,
         }
+    }
+}
+
+pub struct IoReader<R: Read>(R);
+
+impl<R: Read> IoReader<R> {
+    pub fn new(reader: R) -> Self {
+        Self(reader)
+    }
+}
+
+impl<R: Read> ReadBytes for IoReader<R> {
+    type Error = std::io::Error;
+
+    fn next_n<'buf>(&mut self, buf: &'buf mut [u8]) -> Result<&'buf [u8], Self::Error> {
+        let n = self.0.read(buf)?;
+        Ok(&buf[..n])
+    }
+
+    fn skip_n(&mut self, n: usize) -> Result<usize, Self::Error> {
+        let mut skipped = 0;
+        while skipped < n {
+            let mut buf = [0u8; 1024];
+            let bytes = self.next_n(buf.as_mut_slice())?;
+            if bytes.len() == 0 {
+                break;
+            }
+            skipped += bytes.len();
+        }
+        Ok(skipped)
     }
 }
