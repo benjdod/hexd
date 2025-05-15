@@ -831,44 +831,43 @@ impl<R: std::io::Read> IntoHexd<IoReader<R>> for R {
     }
 }
 
-pub trait IntoHexdGrouped<const N: usize>: Sized {
-    type Output: ReadBytes;
+pub trait IntoHexdGrouped<R: ReadBytes, const N: usize>: Sized {
     /// Construct an instance [`Hexd`] from the current vale
     /// and the given endianness.
-    fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output>;
+    fn into_hexd_grouped(self, endianness: Endianness) -> Hexd<R>;
 
     /// Construct an instance of [`Hexd`] from
     /// the current value as big-endian bytes.
     /// This is equivalent to calling `self.into_hexd(Endianness::BigEndian)`
-    fn into_hexd_be(self) -> Hexd<Self::Output> {
-        self.into_hexd(Endianness::BigEndian)
+    fn into_hexd_be(self) -> Hexd<R> {
+        self.into_hexd_grouped(Endianness::BigEndian)
     }
 
     /// Construct an instance of [`Hexd`] from
     /// the current value as little-endian bytes.
     /// This is equivalent to calling `self.into_hexd(Endianness::LittleEndian)`
-    fn into_hexd_le(self) -> Hexd<Self::Output> {
-        self.into_hexd(Endianness::LittleEndian)
+    fn into_hexd_le(self) -> Hexd<R> {
+        self.into_hexd_grouped(Endianness::LittleEndian)
     }
 
     /// Construct an instance [`Hexd`] from the current vale
     /// and the given endianness.
-    fn hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
-        self.into_hexd(endianness)
+    fn hexd(self, endianness: Endianness) -> Hexd<R> {
+        self.into_hexd_grouped(endianness)
     }
 
     /// Construct an instance of [`Hexd`] from
     /// the current value as big-endian bytes.
     /// This is equivalent to calling `self.into_hexd(Endianness::BigEndian)`.
-    fn hexd_be(self) -> Hexd<Self::Output> {
-        self.into_hexd(Endianness::BigEndian)
+    fn hexd_be(self) -> Hexd<R> {
+        self.into_hexd_grouped(Endianness::BigEndian)
     }
 
     /// Construct an instance of [`Hexd`] from
     /// the current value as little-endian bytes.
     /// This is equivalent to calling `self.into_hexd(Endianness::LittleEndian)`
-    fn hexd_le(self) -> Hexd<Self::Output> {
-        self.into_hexd(Endianness::LittleEndian)
+    fn hexd_le(self) -> Hexd<R> {
+        self.into_hexd_grouped(Endianness::LittleEndian)
     }
 }
 
@@ -890,40 +889,40 @@ pub trait AsHexd<'a, R: ReadBytes> {
 pub trait AsHexdGrouped<'a, R: ReadBytes> {
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value and the given endianness.
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<R>;
+    fn as_hexd_grouped(&'a self, endianness: Endianness) -> Hexd<R>;
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value as big-endian bytes.
     /// This is equivalent to calling `self.as_hexd(Endianness::BigEndian)`
     fn as_hexd_be(&'a self) -> Hexd<R> {
-        self.as_hexd(Endianness::BigEndian)
+        self.as_hexd_grouped(Endianness::BigEndian)
     }
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value as little-endian bytes.
     /// This is equivalent to calling `self.as_hexd(Endianness::LittleEndian)`
     fn as_hexd_le(&'a self) -> Hexd<R> {
-        self.as_hexd(Endianness::LittleEndian)
+        self.as_hexd_grouped(Endianness::LittleEndian)
     }
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value and the given endianness.
     fn hexd(&'a self, endianness: Endianness) -> Hexd<R> {
-        self.as_hexd(endianness)
+        self.as_hexd_grouped(endianness)
     }
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value as big-endian bytes.
     /// This is equivalent to calling `self.as_hexd(Endianness::BigEndian)`
     fn hexd_be(&'a self) -> Hexd<R> {
-        self.as_hexd(Endianness::BigEndian)
+        self.as_hexd_grouped(Endianness::BigEndian)
     }
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value as little-endian bytes.
     /// This is equivalent to calling `self.as_hexd(Endianness::LittleEndian)`
     fn hexd_le(&'a self) -> Hexd<R> {
-        self.as_hexd(Endianness::LittleEndian)
+        self.as_hexd_grouped(Endianness::LittleEndian)
     }
 }
 
@@ -965,71 +964,55 @@ impl<'a, T: AsRef<[i8]>> AsHexd<'a, GroupedSliceByteReader<'a, i8, 1>> for T {
     }
 }
 
-macro_rules! as_hexd_grouped {
-    ($t:ty, $sz:expr, $group_size:expr, $byte_spacing:expr, $num_groups:expr) => {
-        impl<'a, T: AsRef<[$t]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, $t, $sz>> for T {
-            fn as_hexd(
-                &'a self,
-                endianness: Endianness,
-            ) -> Hexd<GroupedSliceByteReader<'a, $t, $sz>> {
-                let slice = self.as_ref();
-                let reader = GroupedSliceByteReader::new(slice, endianness);
-                let options = HexdOptions::default().grouping(Grouping::Grouped {
-                    group_size: $group_size,
-                    byte_spacing: $byte_spacing,
-                    num_groups: $num_groups,
-                    group_spacing: Spacing::Normal,
-                });
-                Hexd { reader, options }
-            }
-        }
-    };
-}
-
-as_hexd_grouped!(u16, 2, options::GroupSize::Short, Spacing::None, 8);
-as_hexd_grouped!(i16, 2, options::GroupSize::Short, Spacing::None, 8);
-as_hexd_grouped!(u32, 4, options::GroupSize::Int, Spacing::None, 4);
-as_hexd_grouped!(i32, 4, options::GroupSize::Int, Spacing::None, 4);
-as_hexd_grouped!(u64, 8, options::GroupSize::Long, Spacing::None, 2);
-as_hexd_grouped!(i64, 8, options::GroupSize::Long, Spacing::None, 2);
-as_hexd_grouped!(u128, 16, options::GroupSize::ULong, Spacing::Normal, 1);
-as_hexd_grouped!(i128, 16, options::GroupSize::ULong, Spacing::Normal, 1);
-
-impl<const N: usize, E: EndianBytes<N>, I: Iterator<Item = E>> IntoHexdGrouped<N> for I {
-    type Output = GroupedIteratorReader<E, I, N>;
-
-    fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
-        let reader = GroupedIteratorReader::new(self, endianness);
-
-        let grouping = match N {
-            2 => Grouping::Grouped {
-                group_size: options::GroupSize::Short,
-                byte_spacing: Spacing::None,
-                num_groups: 8,
-                group_spacing: Spacing::Normal,
-            },
-            4 => Grouping::Grouped {
-                group_size: options::GroupSize::Int,
-                byte_spacing: Spacing::None,
-                num_groups: 4,
-                group_spacing: Spacing::Normal,
-            },
-            8 => Grouping::Grouped {
-                group_size: options::GroupSize::Long,
-                byte_spacing: Spacing::None,
-                num_groups: 2,
-                group_spacing: Spacing::Normal,
-            },
-            16 => Grouping::Grouped {
-                group_size: options::GroupSize::ULong,
-                byte_spacing: Spacing::Normal,
-                num_groups: 1,
-                group_spacing: Spacing::Normal,
-            },
-            _ => Grouping::default(),
-        };
-
+impl<'a, const N: usize, E: EndianBytes<N>, T: AsRef<[E]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, E, N>> for T {
+    fn as_hexd_grouped(
+        &'a self,
+        endianness: Endianness,
+    ) -> Hexd<GroupedSliceByteReader<'a, E, N>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        let grouping = grouping_for_bytewidth(N);
         let options = HexdOptions::default().grouping(grouping);
         Hexd { reader, options }
+    }
+}
+
+
+impl<const N: usize, E: EndianBytes<N>, I: Iterator<Item = E>> IntoHexdGrouped<GroupedIteratorReader<E, I, N>, N> for I {
+    fn into_hexd_grouped(self, endianness: Endianness) -> Hexd<GroupedIteratorReader<E, I, N>> {
+        let reader = GroupedIteratorReader::new(self, endianness);
+        let grouping = grouping_for_bytewidth(N);
+        let options = HexdOptions::default().grouping(grouping);
+        Hexd { reader, options }
+    }
+}
+
+fn grouping_for_bytewidth(width: usize) -> Grouping {
+    match width {
+        2 => Grouping::Grouped {
+            group_size: options::GroupSize::Short,
+            byte_spacing: Spacing::None,
+            num_groups: 8,
+            group_spacing: Spacing::Normal,
+        },
+        4 => Grouping::Grouped {
+            group_size: options::GroupSize::Int,
+            byte_spacing: Spacing::None,
+            num_groups: 4,
+            group_spacing: Spacing::Normal,
+        },
+        8 => Grouping::Grouped {
+            group_size: options::GroupSize::Long,
+            byte_spacing: Spacing::None,
+            num_groups: 2,
+            group_spacing: Spacing::Normal,
+        },
+        16 => Grouping::Grouped {
+            group_size: options::GroupSize::ULong,
+            byte_spacing: Spacing::Normal,
+            num_groups: 1,
+            group_spacing: Spacing::Normal,
+        },
+        _ => Grouping::default(),
     }
 }

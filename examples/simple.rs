@@ -1,4 +1,4 @@
-use hxd::{options::HexdOptionsBuilder, AsHexd, AsHexdGrouped};
+use hxd::{options::HexdOptionsBuilder, AsHexd};
 
 fn main() {
     let v = concat!(
@@ -13,6 +13,6 @@ fn main() {
     println!();
 
     // Hexd can write a hexdump into any type
-    // that is `WriteHexdump`.`
-    v.hexd().range(0x23..0x5c).aligned(true).dump();
+    // that is `WriteHexdump`.
+    v.hexd().range(0x23..0x5c).aligned(true).dump_to::<String>();
 }
