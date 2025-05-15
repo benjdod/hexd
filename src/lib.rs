@@ -1,14 +1,14 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
-    cmp::{max, min}, fmt::Debug, io::Write
+    cmp::{max, min}, fmt::Debug, io::{BufReader, Write}
 };
 
 use options::{
     Endianness, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, LeadingZeroChar, Spacing,
 };
 use reader::{
-    ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader, IoReader, IteratorByteReader, ReadBytes
+    ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader, IOReader, IteratorByteReader, ReadBytes
 };
 use writer::{IOWriter, WriteHexdump};
 
@@ -657,6 +657,23 @@ pub struct Hexd<R: ReadBytes> {
     options: HexdOptions,
 }
 
+pub struct InfallibleHexd<R: ReadBytes<Error = std::convert::Infallible>> {
+    reader: R,
+    options: HexdOptions,
+}
+
+pub struct FallibleHexd<R: ReadBytes<Error: Debug>> {
+    reader: R,
+    options: HexdOptions,
+}
+
+#[derive(Debug)]
+pub enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
+
 impl<R: ReadBytes> Hexd<R> {
     /// Construct a new [`Hexd`] instance with the given reader and [default options](HexdOptions::default).
     pub fn new(reader: R) -> Self {
@@ -822,10 +839,10 @@ impl<I: Iterator<Item = u8>> IntoHexd<IteratorByteReader<I>> for I {
     }
 }
 
-impl<R: std::io::Read> IntoHexd<IoReader<R>> for R {
-    fn into_hexd(self) -> Hexd<IoReader<R>> {
+impl<R: std::io::Read> IntoHexd<IOReader<BufReader<R>>> for R {
+    fn into_hexd(self) -> Hexd<IOReader<BufReader<R>>> {
         Hexd {
-            reader: IoReader::new(self),
+            reader: IOReader::new(BufReader::new(self)),
             options: HexdOptions::default(),
         }
     }

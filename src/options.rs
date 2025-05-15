@@ -573,6 +573,22 @@ pub trait HexdOptionsBuilder: Sized {
         })
     }
 
+    /// Set the value of the [`grouping`](field@HexdOptions::grouping) field to [`Grouping::Grouped`]
+    /// using the specified parameters and default spacing.
+    /// This is equivalent to calling [`grouped`](Self::grouped) with the arguments
+    /// `(GroupSize::Short, Spacing::None)` and `(num_groups, Spacing::Normal)`.
+    fn grouped_by(self, group_size: GroupSize, num_groups: usize) -> Self {
+        self.map_options(|o| HexdOptions {
+            grouping: Grouping::Grouped {
+                group_size,
+                num_groups,
+                byte_spacing: Spacing::None,
+                group_spacing: Spacing::Normal,
+            },
+            ..o
+        })
+    }
+
     /// Set the value of the [`autoskip`](HexdOptions::autoskip) field.
     fn autoskip(self, autoskip: bool) -> Self {
         self.map_options(|o| HexdOptions { autoskip, ..o })

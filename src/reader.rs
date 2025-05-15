@@ -436,15 +436,15 @@ impl<'b, T: Iterator<Item = &'b u8>> ReadBytes for T {
     }
 }
 
-pub struct IoReader<R: Read>(R);
+pub struct IOReader<R: Read>(R);
 
-impl<R: Read> IoReader<R> {
-    pub fn new(reader: R) -> Self {
+impl<R: Read> IOReader<R> {
+    pub fn new(reader: R) -> IOReader<R> {
         Self(reader)
     }
 }
 
-impl<R: Read> ReadBytes for IoReader<R> {
+impl<R: Read> ReadBytes for IOReader<R> {
     type Error = std::io::Error;
 
     fn next_n<'buf>(&mut self, buf: &'buf mut [u8]) -> Result<&'buf [u8], Self::Error> {

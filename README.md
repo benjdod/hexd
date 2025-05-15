@@ -127,7 +127,7 @@ Hexd can handle more than just bytes. All primitive integer types [can be dumped
 ```rust
 use hxd::{AsHexdGrouped, options::Endianness};
 
-vec![0x6120u16; 8].as_hexd(Endianness::LittleEndian).dump();
+vec![0x6120u16; 8].as_hexd_grouped(Endianness::LittleEndian).dump();
 // 00000000: 2061 2061 2061 2061 2061 2061 2061 2061 | a a a a a a a a|
 
 vec![0x7fa06120i32; 4].as_hexd_be().dump();
