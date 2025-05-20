@@ -350,11 +350,6 @@ struct HexdumpLineWriter<R: ReadBytes, W: WriteHexdump> {
     flush_idx: usize,
 }
 
-enum HexdError<R, W> {
-    Read(R),
-    Write(W),
-}
-
 impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
     fn new(reader: R, writer: W, options: HexdOptions) -> Self {
         let line_iterator = HexdumpLineIterator::new(reader, options.clone());
@@ -372,16 +367,16 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
         let r = self.do_hexdump_internal();
         let ll = match r {
             Ok(_) => Ok(Ok(self.writer)),
-            Err(HexdError::Write(e)) => Ok(Err(e)),
-            Err(HexdError::Read(r)) => Err(r),
+            Err(ReadWriteError::Write(e)) => Ok(Err(e)),
+            Err(ReadWriteError::Read(r)) => Err(r),
         }?;
         Ok(WriteHexdump::consume(ll))
     }
 
-    fn do_hexdump_internal(&mut self) -> Result<(), HexdError<R::Error, W::Error>> {
+    fn do_hexdump_internal(&mut self) -> Result<(), ReadWriteError<R::Error, W::Error>> {
         let mut i = 0usize;
         while let Some(r) = self.line_iterator.next() {
-            let r = r.map_err(HexdError::Read)?;
+            let r = r.map_err(ReadWriteError::Read)?;
             match r {
                 LineIteratorResult::Row(r) => {
                     if self.elided_row.is_some() {
@@ -632,14 +627,14 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
     }
 
     #[inline]
-    fn flush_line(&mut self) -> Result<(), HexdError<R::Error, W::Error>> {
+    fn flush_line(&mut self) -> Result<(), ReadWriteError<R::Error, W::Error>> {
         if self.str_buffer.len > 0 {
             self.str_buffer.push(b'\n');
         }
         let s = self.str_buffer.as_str();
         if s.len() > 0 {
-            self.writer.write_str(s).map_err(HexdError::Write)?;
-            self.writer.line_end().map_err(HexdError::Write)?;
+            self.writer.write_str(s).map_err(ReadWriteError::Write)?;
+            self.writer.line_end().map_err(ReadWriteError::Write)?;
         }
 
         self.flush_idx += 1;
