@@ -1,14 +1,17 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
-    cmp::{max, min}, fmt::Debug, io::{BufReader, Write}
+    cmp::{max, min},
+    fmt::Debug,
+    io::{BufReader, Write},
 };
 
 use options::{
     Endianness, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, LeadingZeroChar, Spacing,
 };
 use reader::{
-    ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader, IOReader, IteratorByteReader, ReadBytes
+    ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader, IOReader,
+    IteratorByteReader, ReadBytes,
 };
 use writer::{IOWriter, WriteHexdump};
 
@@ -233,9 +236,7 @@ impl<'a, R: ReadBytes> HexdumpLineIterator<R> {
         let mut buffer = StackBuffer::<MAX_BUFFER_SIZE>::new();
 
         let actually_read_len = {
-            let n = self
-                .reader
-                .next_n(&mut buffer.as_mut_slice()[..len])?;
+            let n = self.reader.next_n(&mut buffer.as_mut_slice()[..len])?;
             n.len()
         };
 
@@ -351,7 +352,7 @@ struct HexdumpLineWriter<R: ReadBytes, W: WriteHexdump> {
 
 enum HexdError<R, W> {
     Read(R),
-    Write(W)
+    Write(W),
 }
 
 impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
@@ -500,11 +501,12 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
             }
         }
 
-        if self.options.show_ascii && self
-            .options
-            .grouping
-            .spacing_for_index(self.options.elt_width() - 1)
-            == Spacing::None
+        if self.options.show_ascii
+            && self
+                .options
+                .grouping
+                .spacing_for_index(self.options.elt_width() - 1)
+                == Spacing::None
         {
             self.str_buffer.push(b' ');
         }
@@ -677,7 +679,7 @@ impl<R: ReadBytes> Hexd<R> {
         Hexd { reader, options }
     }
 
-    /// Print a hexdump to `stdout`. 
+    /// Print a hexdump to `stdout`.
     ///
     /// ```
     /// use hxd::AsHexd;
@@ -779,7 +781,7 @@ impl<R: ReadBytes> Hexd<R> {
 }
 
 /// Wrapper type for an error that can occur during reading or writing.
-/// 
+///
 /// See also: [`FallibleHexd::dump_io`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadWriteError<R, W> {
@@ -801,7 +803,7 @@ impl<R: ReadBytes> FallibleHexd<R> {
         Self { reader, options }
     }
 
-    /// Print a hexdump to `stdout`. 
+    /// Print a hexdump to `stdout`.
     ///
     /// ```no_run
     /// use hxd::IntoFallibleHexd;
@@ -815,11 +817,11 @@ impl<R: ReadBytes> FallibleHexd<R> {
         match self.dump_io(std::io::stdout()) {
             Ok(()) => Ok(()),
             Err(ReadWriteError::Read(e)) => Err(e),
-            Err(ReadWriteError::Write(_)) => panic!("could not write to stdout")
+            Err(ReadWriteError::Write(_)) => panic!("could not write to stdout"),
         }
     }
 
-    /// Print a hexdump to `stderr`. 
+    /// Print a hexdump to `stderr`.
     ///
     /// ```no_run
     /// use hxd::IntoFallibleHexd;
@@ -833,7 +835,7 @@ impl<R: ReadBytes> FallibleHexd<R> {
         match self.dump_io(std::io::stderr()) {
             Ok(()) => Ok(()),
             Err(ReadWriteError::Read(e)) => Err(e),
-            Err(ReadWriteError::Write(_)) => panic!("could not write to stdout")
+            Err(ReadWriteError::Write(_)) => panic!("could not write to stdout"),
         }
     }
 
@@ -889,7 +891,10 @@ impl<R: ReadBytes> FallibleHexd<R> {
     ///     ReadWriteError::Write(e) => panic!("could not write to file: {:?}", e),
     /// });
     /// ```
-    pub fn dump_io<W: Write>(self, write: W) -> Result<(), ReadWriteError<R::Error, std::io::Error>> {
+    pub fn dump_io<W: Write>(
+        self,
+        write: W,
+    ) -> Result<(), ReadWriteError<R::Error, std::io::Error>> {
         let hlw = HexdumpLineWriter::new(self.reader, IOWriter::new(write), self.options);
         match hlw.do_hexdump() {
             Ok(Ok(_)) => Ok(()),
@@ -919,7 +924,10 @@ impl<R: ReadBytes> FallibleHexd<R> {
     ///     ReadWriteError::Write(e) => panic!("could not write to file: {:?}", e),
     /// });
     /// ```
-    pub fn dump_io_unbuffered<W: Write>(self, write: W) -> Result<(), ReadWriteError<R::Error, std::io::Error>> {
+    pub fn dump_io_unbuffered<W: Write>(
+        self,
+        write: W,
+    ) -> Result<(), ReadWriteError<R::Error, std::io::Error>> {
         let hlw =
             HexdumpLineWriter::new(self.reader, IOWriter::new_unbuffered(write), self.options);
         match hlw.do_hexdump() {
@@ -1134,11 +1142,10 @@ impl<'a, T: AsRef<[i8]>> AsHexd<'a, GroupedSliceByteReader<'a, i8, 1>> for T {
     }
 }
 
-impl<'a, const N: usize, E: EndianBytes<N>, T: AsRef<[E]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, E, N>> for T {
-    fn as_hexd_grouped(
-        &'a self,
-        endianness: Endianness,
-    ) -> Hexd<GroupedSliceByteReader<'a, E, N>> {
+impl<'a, const N: usize, E: EndianBytes<N>, T: AsRef<[E]>>
+    AsHexdGrouped<'a, GroupedSliceByteReader<'a, E, N>> for T
+{
+    fn as_hexd_grouped(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, E, N>> {
         let slice = self.as_ref();
         let reader = GroupedSliceByteReader::new(slice, endianness);
         let grouping = grouping_for_bytewidth(N);
@@ -1147,8 +1154,9 @@ impl<'a, const N: usize, E: EndianBytes<N>, T: AsRef<[E]>> AsHexdGrouped<'a, Gro
     }
 }
 
-
-impl<const N: usize, E: EndianBytes<N>, I: Iterator<Item = E>> IntoHexdGrouped<GroupedIteratorReader<E, I, N>, N> for I {
+impl<const N: usize, E: EndianBytes<N>, I: Iterator<Item = E>>
+    IntoHexdGrouped<GroupedIteratorReader<E, I, N>, N> for I
+{
     fn into_hexd_grouped(self, endianness: Endianness) -> Hexd<GroupedIteratorReader<E, I, N>> {
         let reader = GroupedIteratorReader::new(self, endianness);
         let grouping = grouping_for_bytewidth(N);
