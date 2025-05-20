@@ -15,7 +15,7 @@ macro_rules! ints_tests {
             let IntRenderTestCase { input, output, endianness } = $value;
 
             // When
-            let dump = input.as_hexd(endianness).dump_to::<String>();
+            let dump = input.as_hexd_grouped(endianness).dump_to::<String>();
 
             // Then
             similar_asserts::assert_eq!(
@@ -30,7 +30,7 @@ macro_rules! ints_tests {
             let IntRenderTestCase { input, output, endianness } = $value;
 
             // When
-            let dump = input.into_iter().map(|i| i).into_hexd(endianness).dump_to::<String>();
+            let dump = input.into_iter().map(|i| i).into_hexd_grouped(endianness).dump_to::<String>();
 
             // Then
             similar_asserts::assert_eq!(

@@ -3,14 +3,14 @@
 use std::{
     cmp::{max, min},
     fmt::Debug,
-    io::Write,
+    io::{BufReader, Write},
 };
 
 use options::{
     Endianness, Grouping, HexdOptions, HexdOptionsBuilder, IndexOffset, LeadingZeroChar, Spacing,
 };
 use reader::{
-    ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader,
+    ByteSliceReader, EndianBytes, GroupedIteratorReader, GroupedSliceByteReader, IOReader,
     IteratorByteReader, ReadBytes,
 };
 use writer::{IOWriter, WriteHexdump};
@@ -232,14 +232,11 @@ impl<'a, R: ReadBytes> HexdumpLineIterator<R> {
         }
     }
 
-    fn read_into_buffer(&mut self, len: usize) -> RowBuffer {
+    fn read_into_buffer(&mut self, len: usize) -> Result<RowBuffer, R::Error> {
         let mut buffer = StackBuffer::<MAX_BUFFER_SIZE>::new();
 
         let actually_read_len = {
-            let n = self
-                .reader
-                .next_n(&mut buffer.as_mut_slice()[..len])
-                .unwrap();
+            let n = self.reader.next_n(&mut buffer.as_mut_slice()[..len])?;
             n.len()
         };
 
@@ -253,7 +250,7 @@ impl<'a, R: ReadBytes> HexdumpLineIterator<R> {
         };
         self.index += actually_read_len;
         self.state = HexdumpLineIteratorState::InProgress;
-        o
+        Ok(o)
     }
 
     fn calculate_row_index(&self) -> usize {
@@ -271,7 +268,7 @@ enum LineIteratorResult {
 }
 
 impl<R: ReadBytes> Iterator for HexdumpLineIterator<R> {
-    type Item = LineIteratorResult;
+    type Item = Result<LineIteratorResult, R::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let st = self.state;
@@ -313,10 +310,16 @@ impl<R: ReadBytes> Iterator for HexdumpLineIterator<R> {
                 self.state = HexdumpLineIteratorState::InProgress;
                 let rowbuffer = self.read_into_buffer(read_len);
 
+                if let Err(e) = rowbuffer {
+                    return Some(Err(e));
+                }
+
+                let rowbuffer = rowbuffer.unwrap();
+
                 if self.options.autoskip {
                     if let Some(em) = &self.elision_match {
                         if em.matches(&rowbuffer, &self.options) {
-                            return Some(LineIteratorResult::Elided(rowbuffer));
+                            return Some(Ok(LineIteratorResult::Elided(rowbuffer)));
                         } else {
                             self.elision_match = None;
                         }
@@ -327,7 +330,7 @@ impl<R: ReadBytes> Iterator for HexdumpLineIterator<R> {
                     }
                 }
                 if rowbuffer.length > 0 {
-                    Some(LineIteratorResult::Row(rowbuffer))
+                    Some(Ok(LineIteratorResult::Row(rowbuffer)))
                 } else {
                     self.state = HexdumpLineIteratorState::Completed;
                     None
@@ -360,18 +363,20 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
         }
     }
 
-    fn do_hexdump(mut self) -> W::Output {
+    fn do_hexdump(mut self) -> Result<W::Output, R::Error> {
         let r = self.do_hexdump_internal();
         let ll = match r {
-            Ok(_) => Ok(self.writer),
-            Err(e) => Err(e),
-        };
-        WriteHexdump::consume(ll)
+            Ok(_) => Ok(Ok(self.writer)),
+            Err(ReadWriteError::Write(e)) => Ok(Err(e)),
+            Err(ReadWriteError::Read(r)) => Err(r),
+        }?;
+        Ok(WriteHexdump::consume(ll))
     }
 
-    fn do_hexdump_internal(&mut self) -> Result<(), W::Error> {
+    fn do_hexdump_internal(&mut self) -> Result<(), ReadWriteError<R::Error, W::Error>> {
         let mut i = 0usize;
         while let Some(r) = self.line_iterator.next() {
+            let r = r.map_err(ReadWriteError::Read)?;
             match r {
                 LineIteratorResult::Row(r) => {
                     if self.elided_row.is_some() {
@@ -491,11 +496,12 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
             }
         }
 
-        if self.options.show_ascii && self
-            .options
-            .grouping
-            .spacing_for_index(self.options.elt_width() - 1)
-            == Spacing::None
+        if self.options.show_ascii
+            && self
+                .options
+                .grouping
+                .spacing_for_index(self.options.elt_width() - 1)
+                == Spacing::None
         {
             self.str_buffer.push(b' ');
         }
@@ -621,14 +627,14 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
     }
 
     #[inline]
-    fn flush_line(&mut self) -> Result<(), W::Error> {
+    fn flush_line(&mut self) -> Result<(), ReadWriteError<R::Error, W::Error>> {
         if self.str_buffer.len > 0 {
             self.str_buffer.push(b'\n');
         }
         let s = self.str_buffer.as_str();
         if s.len() > 0 {
-            self.writer.write_str(s)?;
-            self.writer.line_end()?;
+            self.writer.write_str(s).map_err(ReadWriteError::Write)?;
+            self.writer.line_end().map_err(ReadWriteError::Write)?;
         }
 
         self.flush_idx += 1;
@@ -648,8 +654,14 @@ pub struct Hexd<R: ReadBytes> {
     options: HexdOptions,
 }
 
+/// A fallible variant of `Hexd` that surfaces errors from the underlying [reader](reader::ReadBytes).
+pub struct FallibleHexd<R: ReadBytes> {
+    reader: R,
+    options: HexdOptions,
+}
+
 impl<R: ReadBytes> Hexd<R> {
-    /// Construct a new [`Hexd`] instance with the given reader and [default options](HexdOptions::default).
+    /// Construct a new [`FallibleHexd`] instance with the given reader and [default options](HexdOptions::default).
     pub fn new(reader: R) -> Self {
         Hexd {
             reader,
@@ -657,12 +669,12 @@ impl<R: ReadBytes> Hexd<R> {
         }
     }
 
-    /// Construct a new [`Hexd`] instance with the given reader and options.
+    /// Construct a new [`FallibleHexd`] instance with the given reader and options.
     pub fn new_with_options(reader: R, options: HexdOptions) -> Self {
         Hexd { reader, options }
     }
 
-    /// Print a hexdump to `stdout`. This method is synonymous with [`print`](Hexd::print).
+    /// Print a hexdump to `stdout`.
     ///
     /// ```
     /// use hxd::AsHexd;
@@ -676,7 +688,7 @@ impl<R: ReadBytes> Hexd<R> {
             .expect("could not print hexdump to stdout");
     }
 
-    /// Print a hexdump to `stderr`. This method is synonymous with [`print_err`](Hexd::print_err).
+    /// Print a hexdump to `stderr`.
     ///
     /// ```
     /// use hxd::AsHexd;
@@ -699,7 +711,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// ```
     pub fn dump_to<W: WriteHexdump + Default>(self) -> W::Output {
         let hlw = HexdumpLineWriter::new(self.reader, W::default(), self.options);
-        hlw.do_hexdump()
+        hlw.do_hexdump().unwrap()
     }
 
     /// Write a hexdump to an instance of `W` and return its output.
@@ -712,7 +724,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// ```
     pub fn dump_into<W: WriteHexdump>(self, writer: W) -> W::Output {
         let hlw = HexdumpLineWriter::new(self.reader, writer, self.options);
-        hlw.do_hexdump()
+        hlw.do_hexdump().unwrap()
     }
 
     /// Write a hexdump to an object that is [Write].
@@ -735,7 +747,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// ```
     pub fn dump_io<W: Write>(self, write: W) -> Result<(), std::io::Error> {
         let hlw = HexdumpLineWriter::new(self.reader, IOWriter::new(write), self.options);
-        hlw.do_hexdump()
+        hlw.do_hexdump().unwrap()
     }
 
     /// Write a hexdump to an object that is [Write].
@@ -754,24 +766,170 @@ impl<R: ReadBytes> Hexd<R> {
     ///     .open("hexdump.txt")
     ///     .unwrap();
     ///
-    /// v.hexd().dump_io(f).expect("could not write hexdump to file");
+    /// v.hexd().dump_io_unbuffered(f).expect("could not write hexdump to file");
     /// ```
     pub fn dump_io_unbuffered<W: Write>(self, write: W) -> Result<(), std::io::Error> {
         let hlw =
             HexdumpLineWriter::new(self.reader, IOWriter::new_unbuffered(write), self.options);
+        hlw.do_hexdump().unwrap()
+    }
+}
+
+/// Wrapper type for an error that can occur during reading or writing.
+///
+/// See also: [`FallibleHexd::dump_io`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadWriteError<R, W> {
+    Read(R),
+    Write(W),
+}
+
+impl<R: ReadBytes> FallibleHexd<R> {
+    /// Construct a new [`Hexd`] instance with the given reader and [default options](HexdOptions::default).
+    pub fn new(reader: R) -> Self {
+        Self {
+            reader,
+            options: HexdOptions::default(),
+        }
+    }
+
+    /// Construct a new [`Hexd`] instance with the given reader and options.
+    pub fn new_with_options(reader: R, options: HexdOptions) -> Self {
+        Self { reader, options }
+    }
+
+    /// Print a hexdump to `stdout`.
+    ///
+    /// ```no_run
+    /// use hxd::IntoFallibleHexd;
+    /// use std::fs::OpenOptions;
+    ///
+    /// let f = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// f.hexd().dump().expect("could not read file"); // print a hexdump
+    /// ```
+    pub fn dump(self) -> Result<(), R::Error> {
+        match self.dump_io(std::io::stdout()) {
+            Ok(()) => Ok(()),
+            Err(ReadWriteError::Read(e)) => Err(e),
+            Err(ReadWriteError::Write(_)) => panic!("could not write to stdout"),
+        }
+    }
+
+    /// Print a hexdump to `stderr`.
+    ///
+    /// ```no_run
+    /// use hxd::IntoFallibleHexd;
+    /// use std::fs::OpenOptions;
+    ///
+    /// let f = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// f.hexd().dump_err().expect("could not read file"); // print a hexdump to stderr
+    /// ```
+    pub fn dump_err(self) -> Result<(), R::Error> {
+        match self.dump_io(std::io::stderr()) {
+            Ok(()) => Ok(()),
+            Err(ReadWriteError::Read(e)) => Err(e),
+            Err(ReadWriteError::Write(_)) => panic!("could not write to stdout"),
+        }
+    }
+
+    /// Construct a default instance of `W` and write a hexdump to it, returning its output.
+    ///
+    /// ```no_run
+    /// use hxd::IntoFallibleHexd;
+    /// use std::fs::OpenOptions;
+    ///
+    /// let f = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// let dump = f.hexd().dump_to::<String>().expect("could not read file");
+    /// ```
+    pub fn dump_to<W: WriteHexdump + Default>(self) -> Result<W::Output, R::Error> {
+        let hlw = HexdumpLineWriter::new(self.reader, W::default(), self.options);
         hlw.do_hexdump()
     }
 
-    /// Print a hexdump to [`stdout`](std::io::Stdout). This method is synonymous with [`print`](Hexd::print).
-    pub fn print(self) {
-        self.dump_io(std::io::stdout())
-            .expect("could not print hexdump to stdout");
+    /// Write a hexdump to an instance of `W` and return its output.
+    ///
+    /// ```no_run
+    /// use hxd::IntoFallibleHexd;
+    /// use std::fs::OpenOptions;
+    ///
+    /// let f = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// let v: Vec<String> = Vec::new();
+    /// let dump = f.hexd().dump_into(v).expect("could not read file");
+    /// ```
+    pub fn dump_into<W: WriteHexdump>(self, writer: W) -> Result<W::Output, R::Error> {
+        let hlw = HexdumpLineWriter::new(self.reader, writer, self.options);
+        hlw.do_hexdump()
     }
 
-    /// Print a hexdump to [`stderr`](std::io::Stderr).
-    pub fn print_err(self) {
-        self.dump_io(std::io::stderr())
-            .expect("could not print hexdump to stderr");
+    /// Write a hexdump to an object that is [Write].
+    /// The object is wrapped in a [BufWriter](std::io::BufWriter)
+    /// for improved performance.
+    ///
+    /// ```no_run
+    /// use hxd::{IntoFallibleHexd, ReadWriteError};
+    /// use std::fs::OpenOptions;
+    ///
+    /// let src = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// let f = OpenOptions::new()
+    ///     .write(true)
+    ///     .create(true)
+    ///     .open("hexdump.txt")
+    ///     .unwrap();
+    ///
+    /// src.hexd().dump_io(f).map_err(|err| match err {
+    ///     ReadWriteError::Read(e) => panic!("could not read file: {:?}", e),
+    ///     ReadWriteError::Write(e) => panic!("could not write to file: {:?}", e),
+    /// });
+    /// ```
+    pub fn dump_io<W: Write>(
+        self,
+        write: W,
+    ) -> Result<(), ReadWriteError<R::Error, std::io::Error>> {
+        let hlw = HexdumpLineWriter::new(self.reader, IOWriter::new(write), self.options);
+        match hlw.do_hexdump() {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => Err(ReadWriteError::Write(e)),
+            Err(e) => Err(ReadWriteError::Read(e)),
+        }
+    }
+
+    /// Write a hexdump to an object that is [Write].
+    /// Unlike [`Self::dump_io`], this method does not wrap the object in a
+    /// [BufWriter](std::io::BufWriter).
+    ///
+    /// ```no_run
+    /// use hxd::{IntoFallibleHexd, ReadWriteError};
+    /// use std::fs::OpenOptions;
+    ///
+    /// let src = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// let f = OpenOptions::new()
+    ///     .write(true)
+    ///     .create(true)
+    ///     .open("hexdump.txt")
+    ///     .unwrap();
+    ///
+    /// src.hexd().dump_io_unbuffered(f).map_err(|err| match err {
+    ///     ReadWriteError::Read(e) => panic!("could not read file: {:?}", e),
+    ///     ReadWriteError::Write(e) => panic!("could not write to file: {:?}", e),
+    /// });
+    /// ```
+    pub fn dump_io_unbuffered<W: Write>(
+        self,
+        write: W,
+    ) -> Result<(), ReadWriteError<R::Error, std::io::Error>> {
+        let hlw =
+            HexdumpLineWriter::new(self.reader, IOWriter::new_unbuffered(write), self.options);
+        match hlw.do_hexdump() {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => Err(ReadWriteError::Write(e)),
+            Err(e) => Err(ReadWriteError::Read(e)),
+        }
     }
 }
 
@@ -780,6 +938,17 @@ impl<R: ReadBytes> Hexd<R> {
 impl<R: ReadBytes> HexdOptionsBuilder for Hexd<R> {
     fn map_options<F: FnOnce(HexdOptions) -> HexdOptions>(self, f: F) -> Self {
         Hexd {
+            options: f(self.options),
+            ..self
+        }
+    }
+}
+
+/// [`FallibleHexd`] implements [`HexdOptionsBuilder`] to allow for fluent
+/// configuration.
+impl<R: ReadBytes> HexdOptionsBuilder for FallibleHexd<R> {
+    fn map_options<F: FnOnce(HexdOptions) -> HexdOptions>(self, f: F) -> Self {
+        Self {
             options: f(self.options),
             ..self
         }
@@ -796,18 +965,17 @@ impl From<LeadingZeroChar> for u8 {
     }
 }
 
-/// This trait yields an owning version of [`Hexd`].
-pub trait IntoHexd: Sized {
-    type Output: ReadBytes;
-    fn into_hexd(self) -> Hexd<Self::Output>;
-    fn hexd(self) -> Hexd<Self::Output> {
+/// Yield an owning version of [`Hexd`]
+/// over byte sequences.
+pub trait IntoHexd<R: ReadBytes>: Sized {
+    fn into_hexd(self) -> Hexd<R>;
+    fn hexd(self) -> Hexd<R> {
         self.into_hexd()
     }
 }
 
-impl<I: Iterator<Item = u8>> IntoHexd for I {
-    type Output = IteratorByteReader<I>;
-    fn into_hexd(self) -> Hexd<Self::Output> {
+impl<I: Iterator<Item = u8>> IntoHexd<IteratorByteReader<I>> for I {
+    fn into_hexd(self) -> Hexd<IteratorByteReader<I>> {
         Hexd {
             reader: IteratorByteReader::new(self),
             options: HexdOptions::default(),
@@ -815,49 +983,67 @@ impl<I: Iterator<Item = u8>> IntoHexd for I {
     }
 }
 
-pub trait IntoHexdGrouped<const N: usize>: Sized {
-    type Output: ReadBytes;
+/// Yield an owning version of [`FallibleHexd`].
+pub trait IntoFallibleHexd<R: ReadBytes>: Sized {
+    fn into_hexd(self) -> FallibleHexd<R>;
+    fn hexd(self) -> FallibleHexd<R> {
+        self.into_hexd()
+    }
+}
+
+impl<R: std::io::Read> IntoFallibleHexd<IOReader<BufReader<R>>> for R {
+    fn into_hexd(self) -> FallibleHexd<IOReader<BufReader<R>>> {
+        FallibleHexd {
+            reader: IOReader::new(BufReader::new(self)),
+            options: HexdOptions::default(),
+        }
+    }
+}
+
+/// Yield an owning version of [`Hexd`] over
+/// integer sequences.
+pub trait IntoHexdGrouped<R: ReadBytes, const N: usize>: Sized {
     /// Construct an instance [`Hexd`] from the current vale
     /// and the given endianness.
-    fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output>;
+    fn into_hexd_grouped(self, endianness: Endianness) -> Hexd<R>;
 
     /// Construct an instance of [`Hexd`] from
     /// the current value as big-endian bytes.
     /// This is equivalent to calling `self.into_hexd(Endianness::BigEndian)`
-    fn into_hexd_be(self) -> Hexd<Self::Output> {
-        self.into_hexd(Endianness::BigEndian)
+    fn into_hexd_be(self) -> Hexd<R> {
+        self.into_hexd_grouped(Endianness::BigEndian)
     }
 
     /// Construct an instance of [`Hexd`] from
     /// the current value as little-endian bytes.
     /// This is equivalent to calling `self.into_hexd(Endianness::LittleEndian)`
-    fn into_hexd_le(self) -> Hexd<Self::Output> {
-        self.into_hexd(Endianness::LittleEndian)
+    fn into_hexd_le(self) -> Hexd<R> {
+        self.into_hexd_grouped(Endianness::LittleEndian)
     }
 
     /// Construct an instance [`Hexd`] from the current vale
     /// and the given endianness.
-    fn hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
-        self.into_hexd(endianness)
+    fn hexd(self, endianness: Endianness) -> Hexd<R> {
+        self.into_hexd_grouped(endianness)
     }
 
     /// Construct an instance of [`Hexd`] from
     /// the current value as big-endian bytes.
     /// This is equivalent to calling `self.into_hexd(Endianness::BigEndian)`.
-    fn hexd_be(self) -> Hexd<Self::Output> {
-        self.into_hexd(Endianness::BigEndian)
+    fn hexd_be(self) -> Hexd<R> {
+        self.into_hexd_grouped(Endianness::BigEndian)
     }
 
     /// Construct an instance of [`Hexd`] from
     /// the current value as little-endian bytes.
     /// This is equivalent to calling `self.into_hexd(Endianness::LittleEndian)`
-    fn hexd_le(self) -> Hexd<Self::Output> {
-        self.into_hexd(Endianness::LittleEndian)
+    fn hexd_le(self) -> Hexd<R> {
+        self.into_hexd_grouped(Endianness::LittleEndian)
     }
 }
 
-/// This trait can be implemented for reference types to yield
-/// a non-owning version of [`Hexd`].
+/// Yield a non-owning version of [`Hexd`]
+/// over borrowed byte sequences.
 pub trait AsHexd<'a, R: ReadBytes> {
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value.
@@ -871,43 +1057,45 @@ pub trait AsHexd<'a, R: ReadBytes> {
     }
 }
 
+/// Yield a non-owning version of [`Hexd`]
+/// over borrowed integer sequences..
 pub trait AsHexdGrouped<'a, R: ReadBytes> {
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value and the given endianness.
-    fn as_hexd(&'a self, endianness: Endianness) -> Hexd<R>;
+    fn as_hexd_grouped(&'a self, endianness: Endianness) -> Hexd<R>;
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value as big-endian bytes.
     /// This is equivalent to calling `self.as_hexd(Endianness::BigEndian)`
     fn as_hexd_be(&'a self) -> Hexd<R> {
-        self.as_hexd(Endianness::BigEndian)
+        self.as_hexd_grouped(Endianness::BigEndian)
     }
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value as little-endian bytes.
     /// This is equivalent to calling `self.as_hexd(Endianness::LittleEndian)`
     fn as_hexd_le(&'a self) -> Hexd<R> {
-        self.as_hexd(Endianness::LittleEndian)
+        self.as_hexd_grouped(Endianness::LittleEndian)
     }
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value and the given endianness.
     fn hexd(&'a self, endianness: Endianness) -> Hexd<R> {
-        self.as_hexd(endianness)
+        self.as_hexd_grouped(endianness)
     }
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value as big-endian bytes.
     /// This is equivalent to calling `self.as_hexd(Endianness::BigEndian)`
     fn hexd_be(&'a self) -> Hexd<R> {
-        self.as_hexd(Endianness::BigEndian)
+        self.as_hexd_grouped(Endianness::BigEndian)
     }
 
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value as little-endian bytes.
     /// This is equivalent to calling `self.as_hexd(Endianness::LittleEndian)`
     fn hexd_le(&'a self) -> Hexd<R> {
-        self.as_hexd(Endianness::LittleEndian)
+        self.as_hexd_grouped(Endianness::LittleEndian)
     }
 }
 
@@ -949,71 +1137,55 @@ impl<'a, T: AsRef<[i8]>> AsHexd<'a, GroupedSliceByteReader<'a, i8, 1>> for T {
     }
 }
 
-macro_rules! as_hexd_grouped {
-    ($t:ty, $sz:expr, $group_size:expr, $byte_spacing:expr, $num_groups:expr) => {
-        impl<'a, T: AsRef<[$t]>> AsHexdGrouped<'a, GroupedSliceByteReader<'a, $t, $sz>> for T {
-            fn as_hexd(
-                &'a self,
-                endianness: Endianness,
-            ) -> Hexd<GroupedSliceByteReader<'a, $t, $sz>> {
-                let slice = self.as_ref();
-                let reader = GroupedSliceByteReader::new(slice, endianness);
-                let options = HexdOptions::default().grouping(Grouping::Grouped {
-                    group_size: $group_size,
-                    byte_spacing: $byte_spacing,
-                    num_groups: $num_groups,
-                    group_spacing: Spacing::Normal,
-                });
-                Hexd { reader, options }
-            }
-        }
-    };
-}
-
-as_hexd_grouped!(u16, 2, options::GroupSize::Short, Spacing::None, 8);
-as_hexd_grouped!(i16, 2, options::GroupSize::Short, Spacing::None, 8);
-as_hexd_grouped!(u32, 4, options::GroupSize::Int, Spacing::None, 4);
-as_hexd_grouped!(i32, 4, options::GroupSize::Int, Spacing::None, 4);
-as_hexd_grouped!(u64, 8, options::GroupSize::Long, Spacing::None, 2);
-as_hexd_grouped!(i64, 8, options::GroupSize::Long, Spacing::None, 2);
-as_hexd_grouped!(u128, 16, options::GroupSize::ULong, Spacing::Normal, 1);
-as_hexd_grouped!(i128, 16, options::GroupSize::ULong, Spacing::Normal, 1);
-
-impl<const N: usize, E: EndianBytes<N>, I: Iterator<Item = E>> IntoHexdGrouped<N> for I {
-    type Output = GroupedIteratorReader<E, I, N>;
-
-    fn into_hexd(self, endianness: Endianness) -> Hexd<Self::Output> {
-        let reader = GroupedIteratorReader::new(self, endianness);
-
-        let grouping = match N {
-            2 => Grouping::Grouped {
-                group_size: options::GroupSize::Short,
-                byte_spacing: Spacing::None,
-                num_groups: 8,
-                group_spacing: Spacing::Normal,
-            },
-            4 => Grouping::Grouped {
-                group_size: options::GroupSize::Int,
-                byte_spacing: Spacing::None,
-                num_groups: 4,
-                group_spacing: Spacing::Normal,
-            },
-            8 => Grouping::Grouped {
-                group_size: options::GroupSize::Long,
-                byte_spacing: Spacing::None,
-                num_groups: 2,
-                group_spacing: Spacing::Normal,
-            },
-            16 => Grouping::Grouped {
-                group_size: options::GroupSize::ULong,
-                byte_spacing: Spacing::Normal,
-                num_groups: 1,
-                group_spacing: Spacing::Normal,
-            },
-            _ => Grouping::default(),
-        };
-
+impl<'a, const N: usize, E: EndianBytes<N>, T: AsRef<[E]>>
+    AsHexdGrouped<'a, GroupedSliceByteReader<'a, E, N>> for T
+{
+    fn as_hexd_grouped(&'a self, endianness: Endianness) -> Hexd<GroupedSliceByteReader<'a, E, N>> {
+        let slice = self.as_ref();
+        let reader = GroupedSliceByteReader::new(slice, endianness);
+        let grouping = grouping_for_bytewidth(N);
         let options = HexdOptions::default().grouping(grouping);
         Hexd { reader, options }
+    }
+}
+
+impl<const N: usize, E: EndianBytes<N>, I: Iterator<Item = E>>
+    IntoHexdGrouped<GroupedIteratorReader<E, I, N>, N> for I
+{
+    fn into_hexd_grouped(self, endianness: Endianness) -> Hexd<GroupedIteratorReader<E, I, N>> {
+        let reader = GroupedIteratorReader::new(self, endianness);
+        let grouping = grouping_for_bytewidth(N);
+        let options = HexdOptions::default().grouping(grouping);
+        Hexd { reader, options }
+    }
+}
+
+fn grouping_for_bytewidth(width: usize) -> Grouping {
+    match width {
+        2 => Grouping::Grouped {
+            group_size: options::GroupSize::Short,
+            byte_spacing: Spacing::None,
+            num_groups: 8,
+            group_spacing: Spacing::Normal,
+        },
+        4 => Grouping::Grouped {
+            group_size: options::GroupSize::Int,
+            byte_spacing: Spacing::None,
+            num_groups: 4,
+            group_spacing: Spacing::Normal,
+        },
+        8 => Grouping::Grouped {
+            group_size: options::GroupSize::Long,
+            byte_spacing: Spacing::None,
+            num_groups: 2,
+            group_spacing: Spacing::Normal,
+        },
+        16 => Grouping::Grouped {
+            group_size: options::GroupSize::ULong,
+            byte_spacing: Spacing::Normal,
+            num_groups: 1,
+            group_spacing: Spacing::Normal,
+        },
+        _ => Grouping::default(),
     }
 }
