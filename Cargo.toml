@@ -1,14 +1,14 @@
 [package]
 name = "hxd"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 license = "MIT"
 description = "A simple, configurable and dependency-free hexdump library"
 homepage = "https://github.com/benjdod/hexd"
 repository = "https://github.com/benjdod/hexd"
 readme = "README.md"
-keywords = ["inspection", "hexdump", "xxd", "binary"]
-categories = ["encoding", "development-tools", "development-tools::debugging", "visualization"]
+keywords = ["inspection", "hexdump", "binary"]
+categories = ["encoding", "development-tools", "development-tools::debugging"]
 
 [dev-dependencies]
 anyhow = "1.0"
