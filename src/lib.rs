@@ -367,14 +367,14 @@ impl<R: ReadBytes, W: WriteHexdump> HexdumpLineWriter<R, W> {
         }
     }
 
-    fn do_hexdump(mut self) -> W::Output {
+    fn do_hexdump(mut self) -> Result<W::Output, R::Error> {
         let r = self.do_hexdump_internal();
         let ll = match r {
-            Ok(_) => Ok(self.writer),
-            Err(HexdError::Write(e)) => Err(e),
-            _ => panic!("unimplemented")
-        };
-        WriteHexdump::consume(ll)
+            Ok(_) => Ok(Ok(self.writer)),
+            Err(HexdError::Write(e)) => Ok(Err(e)),
+            Err(HexdError::Read(r)) => Err(r),
+        }?;
+        Ok(WriteHexdump::consume(ll))
     }
 
     fn do_hexdump_internal(&mut self) -> Result<(), HexdError<R::Error, W::Error>> {
@@ -657,25 +657,14 @@ pub struct Hexd<R: ReadBytes> {
     options: HexdOptions,
 }
 
-pub struct InfallibleHexd<R: ReadBytes<Error = std::convert::Infallible>> {
+/// A fallible variant of `Hexd` that surfaces errors from the underlying [reader](reader::ReadBytes).
+pub struct FallibleHexd<R: ReadBytes> {
     reader: R,
     options: HexdOptions,
 }
-
-pub struct FallibleHexd<R: ReadBytes<Error: Debug>> {
-    reader: R,
-    options: HexdOptions,
-}
-
-#[derive(Debug)]
-pub enum Either<L, R> {
-    Left(L),
-    Right(R),
-}
-
 
 impl<R: ReadBytes> Hexd<R> {
-    /// Construct a new [`Hexd`] instance with the given reader and [default options](HexdOptions::default).
+    /// Construct a new [`FallibleHexd`] instance with the given reader and [default options](HexdOptions::default).
     pub fn new(reader: R) -> Self {
         Hexd {
             reader,
@@ -683,12 +672,12 @@ impl<R: ReadBytes> Hexd<R> {
         }
     }
 
-    /// Construct a new [`Hexd`] instance with the given reader and options.
+    /// Construct a new [`FallibleHexd`] instance with the given reader and options.
     pub fn new_with_options(reader: R, options: HexdOptions) -> Self {
         Hexd { reader, options }
     }
 
-    /// Print a hexdump to `stdout`. This method is synonymous with [`print`](Hexd::print).
+    /// Print a hexdump to `stdout`. 
     ///
     /// ```
     /// use hxd::AsHexd;
@@ -702,7 +691,7 @@ impl<R: ReadBytes> Hexd<R> {
             .expect("could not print hexdump to stdout");
     }
 
-    /// Print a hexdump to `stderr`. This method is synonymous with [`print_err`](Hexd::print_err).
+    /// Print a hexdump to `stderr`.
     ///
     /// ```
     /// use hxd::AsHexd;
@@ -725,7 +714,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// ```
     pub fn dump_to<W: WriteHexdump + Default>(self) -> W::Output {
         let hlw = HexdumpLineWriter::new(self.reader, W::default(), self.options);
-        hlw.do_hexdump()
+        hlw.do_hexdump().unwrap()
     }
 
     /// Write a hexdump to an instance of `W` and return its output.
@@ -738,7 +727,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// ```
     pub fn dump_into<W: WriteHexdump>(self, writer: W) -> W::Output {
         let hlw = HexdumpLineWriter::new(self.reader, writer, self.options);
-        hlw.do_hexdump()
+        hlw.do_hexdump().unwrap()
     }
 
     /// Write a hexdump to an object that is [Write].
@@ -761,7 +750,7 @@ impl<R: ReadBytes> Hexd<R> {
     /// ```
     pub fn dump_io<W: Write>(self, write: W) -> Result<(), std::io::Error> {
         let hlw = HexdumpLineWriter::new(self.reader, IOWriter::new(write), self.options);
-        hlw.do_hexdump()
+        hlw.do_hexdump().unwrap()
     }
 
     /// Write a hexdump to an object that is [Write].
@@ -780,24 +769,164 @@ impl<R: ReadBytes> Hexd<R> {
     ///     .open("hexdump.txt")
     ///     .unwrap();
     ///
-    /// v.hexd().dump_io(f).expect("could not write hexdump to file");
+    /// v.hexd().dump_io_unbuffered(f).expect("could not write hexdump to file");
     /// ```
     pub fn dump_io_unbuffered<W: Write>(self, write: W) -> Result<(), std::io::Error> {
         let hlw =
             HexdumpLineWriter::new(self.reader, IOWriter::new_unbuffered(write), self.options);
+        hlw.do_hexdump().unwrap()
+    }
+}
+
+/// Wrapper type for an error that can occur during reading or writing.
+/// 
+/// See also: [`FallibleHexd::dump_io`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadWriteError<R, W> {
+    Read(R),
+    Write(W),
+}
+
+impl<R: ReadBytes> FallibleHexd<R> {
+    /// Construct a new [`Hexd`] instance with the given reader and [default options](HexdOptions::default).
+    pub fn new(reader: R) -> Self {
+        Self {
+            reader,
+            options: HexdOptions::default(),
+        }
+    }
+
+    /// Construct a new [`Hexd`] instance with the given reader and options.
+    pub fn new_with_options(reader: R, options: HexdOptions) -> Self {
+        Self { reader, options }
+    }
+
+    /// Print a hexdump to `stdout`. 
+    ///
+    /// ```no_run
+    /// use hxd::IntoFallibleHexd;
+    /// use std::fs::OpenOptions;
+    ///
+    /// let f = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// f.hexd().dump().expect("could not read file"); // print a hexdump
+    /// ```
+    pub fn dump(self) -> Result<(), R::Error> {
+        match self.dump_io(std::io::stdout()) {
+            Ok(()) => Ok(()),
+            Err(ReadWriteError::Read(e)) => Err(e),
+            Err(ReadWriteError::Write(_)) => panic!("could not write to stdout")
+        }
+    }
+
+    /// Print a hexdump to `stderr`. 
+    ///
+    /// ```no_run
+    /// use hxd::IntoFallibleHexd;
+    /// use std::fs::OpenOptions;
+    ///
+    /// let f = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// f.hexd().dump_err().expect("could not read file"); // print a hexdump to stderr
+    /// ```
+    pub fn dump_err(self) -> Result<(), R::Error> {
+        match self.dump_io(std::io::stderr()) {
+            Ok(()) => Ok(()),
+            Err(ReadWriteError::Read(e)) => Err(e),
+            Err(ReadWriteError::Write(_)) => panic!("could not write to stdout")
+        }
+    }
+
+    /// Construct a default instance of `W` and write a hexdump to it, returning its output.
+    ///
+    /// ```no_run
+    /// use hxd::IntoFallibleHexd;
+    /// use std::fs::OpenOptions;
+    ///
+    /// let f = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// let dump = f.hexd().dump_to::<String>().expect("could not read file");
+    /// ```
+    pub fn dump_to<W: WriteHexdump + Default>(self) -> Result<W::Output, R::Error> {
+        let hlw = HexdumpLineWriter::new(self.reader, W::default(), self.options);
         hlw.do_hexdump()
     }
 
-    /// Print a hexdump to [`stdout`](std::io::Stdout). This method is synonymous with [`print`](Hexd::print).
-    pub fn print(self) {
-        self.dump_io(std::io::stdout())
-            .expect("could not print hexdump to stdout");
+    /// Write a hexdump to an instance of `W` and return its output.
+    ///
+    /// ```no_run
+    /// use hxd::IntoFallibleHexd;
+    /// use std::fs::OpenOptions;
+    ///
+    /// let f = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// let v: Vec<String> = Vec::new();
+    /// let dump = f.hexd().dump_into(v).expect("could not read file");
+    /// ```
+    pub fn dump_into<W: WriteHexdump>(self, writer: W) -> Result<W::Output, R::Error> {
+        let hlw = HexdumpLineWriter::new(self.reader, writer, self.options);
+        hlw.do_hexdump()
     }
 
-    /// Print a hexdump to [`stderr`](std::io::Stderr).
-    pub fn print_err(self) {
-        self.dump_io(std::io::stderr())
-            .expect("could not print hexdump to stderr");
+    /// Write a hexdump to an object that is [Write].
+    /// The object is wrapped in a [BufWriter](std::io::BufWriter)
+    /// for improved performance.
+    ///
+    /// ```no_run
+    /// use hxd::{IntoFallibleHexd, ReadWriteError};
+    /// use std::fs::OpenOptions;
+    ///
+    /// let src = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// let f = OpenOptions::new()
+    ///     .write(true)
+    ///     .create(true)
+    ///     .open("hexdump.txt")
+    ///     .unwrap();
+    ///
+    /// src.hexd().dump_io(f).map_err(|err| match err {
+    ///     ReadWriteError::Read(e) => panic!("could not read file: {:?}", e),
+    ///     ReadWriteError::Write(e) => panic!("could not write to file: {:?}", e),
+    /// });
+    /// ```
+    pub fn dump_io<W: Write>(self, write: W) -> Result<(), ReadWriteError<R::Error, std::io::Error>> {
+        let hlw = HexdumpLineWriter::new(self.reader, IOWriter::new(write), self.options);
+        match hlw.do_hexdump() {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => Err(ReadWriteError::Write(e)),
+            Err(e) => Err(ReadWriteError::Read(e)),
+        }
+    }
+
+    /// Write a hexdump to an object that is [Write].
+    /// Unlike [`Self::dump_io`], this method does not wrap the object in a
+    /// [BufWriter](std::io::BufWriter).
+    ///
+    /// ```no_run
+    /// use hxd::{IntoFallibleHexd, ReadWriteError};
+    /// use std::fs::OpenOptions;
+    ///
+    /// let src = OpenOptions::new().read(true).open("file.txt").unwrap();
+    ///
+    /// let f = OpenOptions::new()
+    ///     .write(true)
+    ///     .create(true)
+    ///     .open("hexdump.txt")
+    ///     .unwrap();
+    ///
+    /// src.hexd().dump_io_unbuffered(f).map_err(|err| match err {
+    ///     ReadWriteError::Read(e) => panic!("could not read file: {:?}", e),
+    ///     ReadWriteError::Write(e) => panic!("could not write to file: {:?}", e),
+    /// });
+    /// ```
+    pub fn dump_io_unbuffered<W: Write>(self, write: W) -> Result<(), ReadWriteError<R::Error, std::io::Error>> {
+        let hlw =
+            HexdumpLineWriter::new(self.reader, IOWriter::new_unbuffered(write), self.options);
+        match hlw.do_hexdump() {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => Err(ReadWriteError::Write(e)),
+            Err(e) => Err(ReadWriteError::Read(e)),
+        }
     }
 }
 
@@ -806,6 +935,17 @@ impl<R: ReadBytes> Hexd<R> {
 impl<R: ReadBytes> HexdOptionsBuilder for Hexd<R> {
     fn map_options<F: FnOnce(HexdOptions) -> HexdOptions>(self, f: F) -> Self {
         Hexd {
+            options: f(self.options),
+            ..self
+        }
+    }
+}
+
+/// [`FallibleHexd`] implements [`HexdOptionsBuilder`] to allow for fluent
+/// configuration.
+impl<R: ReadBytes> HexdOptionsBuilder for FallibleHexd<R> {
+    fn map_options<F: FnOnce(HexdOptions) -> HexdOptions>(self, f: F) -> Self {
+        Self {
             options: f(self.options),
             ..self
         }
@@ -822,7 +962,8 @@ impl From<LeadingZeroChar> for u8 {
     }
 }
 
-/// This trait yields an owning version of [`Hexd`].
+/// Yield an owning version of [`Hexd`]
+/// over byte sequences.
 pub trait IntoHexd<R: ReadBytes>: Sized {
     fn into_hexd(self) -> Hexd<R>;
     fn hexd(self) -> Hexd<R> {
@@ -839,15 +980,25 @@ impl<I: Iterator<Item = u8>> IntoHexd<IteratorByteReader<I>> for I {
     }
 }
 
-impl<R: std::io::Read> IntoHexd<IOReader<BufReader<R>>> for R {
-    fn into_hexd(self) -> Hexd<IOReader<BufReader<R>>> {
-        Hexd {
+/// Yield an owning version of [`FallibleHexd`].
+pub trait IntoFallibleHexd<R: ReadBytes>: Sized {
+    fn into_hexd(self) -> FallibleHexd<R>;
+    fn hexd(self) -> FallibleHexd<R> {
+        self.into_hexd()
+    }
+}
+
+impl<R: std::io::Read> IntoFallibleHexd<IOReader<BufReader<R>>> for R {
+    fn into_hexd(self) -> FallibleHexd<IOReader<BufReader<R>>> {
+        FallibleHexd {
             reader: IOReader::new(BufReader::new(self)),
             options: HexdOptions::default(),
         }
     }
 }
 
+/// Yield an owning version of [`Hexd`] over
+/// integer sequences.
 pub trait IntoHexdGrouped<R: ReadBytes, const N: usize>: Sized {
     /// Construct an instance [`Hexd`] from the current vale
     /// and the given endianness.
@@ -888,8 +1039,8 @@ pub trait IntoHexdGrouped<R: ReadBytes, const N: usize>: Sized {
     }
 }
 
-/// This trait can be implemented for reference types to yield
-/// a non-owning version of [`Hexd`].
+/// Yield a non-owning version of [`Hexd`]
+/// over borrowed byte sequences.
 pub trait AsHexd<'a, R: ReadBytes> {
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value.
@@ -903,6 +1054,8 @@ pub trait AsHexd<'a, R: ReadBytes> {
     }
 }
 
+/// Yield a non-owning version of [`Hexd`]
+/// over borrowed integer sequences..
 pub trait AsHexdGrouped<'a, R: ReadBytes> {
     /// Construct a non-owning [`Hexd`] from a reference of
     /// the current value and the given endianness.

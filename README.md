@@ -41,11 +41,11 @@ s.hexd().dump();
 
 ## Features
 
- - Convenient: Hexd tries to be "at your fingerprints" by exposing [blanket conversion traits](https://docs.rs/hxd/latest/hxd/trait.AsHexd.html) and an intuitive [builder-based options API](https://docs.rs/hxd/latest/hxd/options/trait.HexdOptionsBuilder.html).
- - Dependency-free: this crate aims to be as lightweight as possible and does not introduce any unwanted dependencies into your project.
- - Performant: this crate does not allocate more for larger hexdumps.
- - Flexible: hexdumps can be printed or collected to arbitrary types.
- - Easily extensible: this crate provides public traits for [reading from custom sources](https://docs.rs/hxd/latest/hxd/reader/trait.ReadBytes.html) and [writing to custom sinks](https://docs.rs/hxd/latest/hxd/writer/trait.WriteHexdump.html).
+ - Hexd tries to be "at your fingerprints" by exposing [blanket conversion traits](https://docs.rs/hxd/latest/hxd/trait.AsHexd.html) and an intuitive [builder-based options API](https://docs.rs/hxd/latest/hxd/options/trait.HexdOptionsBuilder.html).
+ - This crate aims to be as lightweight as possible and does not introduce any unwanted dependencies into your project.
+ - The implementation is designed with memory usage in mind and takes care not to make large internal allocations.
+ - Hexdumps can be printed or collected to arbitrary types.
+ - Traits are provided for [reading from custom sources](https://docs.rs/hxd/latest/hxd/reader/trait.ReadBytes.html) and [writing to custom sinks](https://docs.rs/hxd/latest/hxd/writer/trait.WriteHexdump.html).
 
 ## Examples
 
